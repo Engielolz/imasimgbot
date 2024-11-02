@@ -113,6 +113,59 @@ function repostToBluesky () { # arguments 1 is uri, 2 is cid. error codes same a
    return 0
 }
 
+function resizeImageForBluesky () {
+   $bapecho "need to resize image"
+   convert /tmp/bash-atproto/$workfile -resize 2000x2000 /tmp/bash-atproto/new-$workfile
+   mv -f /tmp/bash-atproto/new-$workfile /tmp/bash-atproto/$workfile
+}
+
+function compressImageForBluesky () {
+   $bapecho "image is too big, trying to compress"
+   convert /tmp/bash-atproto/$workfile /tmp/bash-atproto/new-${workfile%.*}.jpg
+   if [[ $(stat -c %s /tmp/bash-atproto/new-${workfile%.*}.jpg) -gt 1000000 ]]; then $bapecho "image too big to fit in skeet"; rm /tmp/bash-atproto/$workfile /tmp/bash-atproto/new-${workfile%.*}.jpg; return 1; fi
+   rm /tmp/bash-atproto/$workfile
+   mv -f /tmp/bash-atproto/new-${workfile%.*}.jpg /tmp/bash-atproto/${workfile%.*}.jpg
+   workfile=${workfile%.*}.jpg
+}
+
+function prepareImageForBluesky () { # 1: error 2 missing dep
+   if [ -z "$1" ]; then $bapecho "fatal: no image specified to prepare"; return 1; fi
+   mkdir /tmp/bash-atproto 2>/dev/null
+   workfile=$(uuidgen)."${1##*.}"
+   cp $1 /tmp/bash-atproto/$workfile
+   exiftool -all= /tmp/bash-atproto/$workfile -overwrite_original
+   if [[ $(identify -format '%w' /tmp/bash-atproto/$workfile) -gt 2000 ]] || [[ $(identify -format '%h' /tmp/bash-atproto/$workfile) -gt 2000 ]]; then resizeImageForBluesky; fi
+   if [[ $(stat -c %s /tmp/bash-atproto/$workfile) -gt 1000000 ]]; then 
+      compressImageForBluesky
+      if ! [ "$?" = "0" ]; then return 1; fi
+   fi
+   preparedImage=/tmp/bash-atproto/$workfile
+   preparedMime=$(file --mime-type -b $preparedImage)
+   return 0
+}
+
+function postBlobToPDS () {
+# okay, params are:
+# $1 is the file name and path
+# $2 is the mime type
+   if [ -z "$1" ] || [ -z "$2" ]; then $bapecho "fatal: Required argument missing"; return 1; fi
+   result=$(curl --fail-with-body -X POST -H "Authorization: Bearer $savedAccess" -H "Content-Type: $2" --data-binary @"$1" "https://bsky.social/xrpc/com.atproto.repo.uploadBlob")
+   error=$?
+   if [ "$error" != "0" ]; then
+      $bapecho 'warning: upload failed.'
+      if ! [ "$error" = "22" ]; then processCurlError postBlobToPDS; return 1; fi
+      APIErrorCode=$(echo $result | jq -r .error)
+      if ! [ "$APIErrorCode" = "ExpiredToken" ]; then processAPIError postBlobToPDS result; return 1; fi
+      $bapecho 'error: token needs to be refreshed'
+      return 2
+   fi
+   uri=$(echo $result | jq -r .uri)
+   cid=$(echo $result | jq -r .cid)
+   $bapecho "Blob uploaded at $uri - reference it soon before its gone"
+   return 0
+}
+
+
 function didInit () {
 skipDIDFetch=0
 
