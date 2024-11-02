@@ -22,29 +22,79 @@ if [ "$1" = "--help" ]; then showHelp; exit 0; fi
 
 
 function login () {
-   if [ -z "$1" ] || [ -z "$2" ]; then echo "Login params not specified!"; return 1; fi
+   if [ -z "$1" ] || [ -z "$2" ]; then $iecho "login params not specified"; return 1; fi
    getKeys $1 $2
-   if ! [ "$?" = "0" ]; then echo "Failed to log in"; return 1
+   if ! [ "$?" = "0" ]; then $iecho "failed to log in"; return 1
    else saveKeys ./$idol/secrets.env
    return 0
    fi
 }
 
+function checkRefresh () {
+   if [ "$(date +%s)" -gt "$(( $savedAccessTimestamp + 5400 ))" ]; then # refresh every 90 minutes
+      $iecho "Refreshing tokens"
+      refreshKeys
+      if ! [ "$?" = "0" ]; then
+         $iecho "Refresh error. Exiting."
+         exit 1
+      fi
+      saveSecrets $idol/secrets.env
+   fi
+}
 
+function repostLogic () {
+   $iecho "Going to repost."
+   checkRefresh
+   $iecho "Reposting $1 with CID $2"
+   repostToBluesky $1 $2
+   if [ "$?" != "0" ]; then
+      $iecho "Error when trying to repost."
+      return 1
+   else
+      $iecho "Repost succeeded."
+      return 0
+   fi
+}
 
+function postingLogic () {
+   case "$(date +%m%d)" in
 
+      "0109" | "0401")
+      event=fools
+      ;;
 
+      "1031")
+      event=halloween
+      ;;
 
+      "1224" | "1225" )
+      event=christmas
+      ;;
 
+      *)
+      event=regular
+      ;;
+   esac
+   if ! [ -f $idol/images/$event.txt ]; then event=regular; fi
+   $iecho "Event: $event"
+   images=$(cat $idol/images/$event.txt)
+   return 0
+}
 
+if ! [ -d ./$1 ]; then echo "idolbot: No such idol: $1"; exit 1; fi
 
 idol=$1
+iecho="echo $idol:"
 loadSecrets $idol/secrets.env
 if ! [ "$?" = "0" ]; then
-   if ! [ "$2" = "login" ]; then echo "You need to login first."; fi
-   login $1 $2
+   if ! [ "$2" = "login" ]; then $iecho "you need to login first."; exit 1; fi
+   login $3 $4
+   exit $?
 fi
 if [ "$2" = "login" ]; then
-   if [ "$3" = "--force" ]; then login $1 $2
-   else echo "You are already logged in. Pass --force to log in anyway"; fi
+   if [ "$3" = "--force" ]; then login $3 $4
+   else $iecho "you are already logged in. Pass --force to log in anyway"; fi
 fi
+
+if [ "$2" = "post" ]; then postLogic; fi
+if [ "$2" = "repost" ]; then repostLogic $3 $4; fi

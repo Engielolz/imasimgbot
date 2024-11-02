@@ -14,7 +14,7 @@ function loadSecrets () {
 }
 
 
-function saveKeys () {
+function saveSecrets () {
    $bapecho 'Updating secrets'
    echo 'savedAccess='$savedAccess > $1
    echo 'savedRefresh='$savedRefresh >> $1
@@ -50,7 +50,7 @@ function getKeys () { # 1: failure 2: user error
       if ! [ "$error" = "22" ]; then processCurlError getKeys; return 1; fi
       processAPIError getKeys keyInfo
       echo $keyInfo > failauth.json
-      exit 1
+      return 1
    fi
    $bapecho secured the keys!
    # echo $keyInfo > debug.json
@@ -90,6 +90,7 @@ function postToBluesky () { #1: exception 2: refresh required
       return 2
    fi
    uri=$(echo $result | jq -r .uri)
+   cid=$(echo $result | jq -r .cid)
    $bapecho "Posted record at $uri"
    return 0
 }
@@ -107,6 +108,7 @@ function repostToBluesky () { # arguments 1 is uri, 2 is cid. error codes same a
       return 2
    fi
    uri=$(echo $result | jq -r .uri)
+   cid=$(echo $result | jq -r .cid)
    $bapecho "Repost record at $uri"
    return 0
 }
