@@ -7,7 +7,7 @@ coverWarn=0
 
 
 function loadSecrets () {
-   if [[ -f $1 ]]; then while IFS= read -r line; do declare "$line"; done < $1
+   if [[ -f $1 ]]; then while IFS= read -r line; do declare -g "$line"; done < "$1"
    return 0
    else return 1
    fi
@@ -31,7 +31,7 @@ function processAPIError () {
    $bapecho 'Message:' $APIErrorMessage
    if [ "$APIErrorCode" = "AccountTakedown" ] || [ "$APIErrorCode" = "InvalidRequest" ] || [ "$APIErrorCode" = "InvalidToken" ]; then 
       $bapecho "Safety triggered. Dumping error and shutting down."
-      $bapecho ${!2} > ./fatal.json
+      echo ${!2} > ./fatal.json
       exit 115
    fi;
 }

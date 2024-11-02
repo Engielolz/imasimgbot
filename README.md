@@ -1,6 +1,6 @@
 # iM@S Image Bot
 
-This is a bot powered by bash-atproto that posts random covers by 765 Production idols.
+This is a bot powered by bash-atproto that posts random images of 765 Production idols.
 
 This bot is currently under development and does not function yet.
 
@@ -20,13 +20,13 @@ To use this script you will need, at minimum:
 
 Posting images (required by imasimgbot) additionally requires:
 
-* imagemagick (convert)
+* imagemagick (`convert` and `identify`)
 
 The other dependencies should come with your Linux distro.
 
 ## Setup
 
-Like 765coverbot, this is intended to be ran on an always-on system behind a router. This does not require direct internet access and the server ideally shouldn't have it.
+Like 765coverbot, this is intended to be ran on an always-on system behind a router. This does not require direct internet access and ideally the server shouldn't have it.
 
 The bot isn't ready yet, but when it is, you'll install it with these commands (as root):
 
