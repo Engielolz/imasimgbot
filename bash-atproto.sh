@@ -159,7 +159,7 @@ function postBlobToPDS () {
       $bapecho 'error: token needs to be refreshed'
       return 2
    fi
-   postedBlob=$(echo $result | jq -r .blob)
+   postedBlob=$(echo $result | jq -r .ref.'"$link"')
    $bapecho "Blob uploaded ($postedBlob) - reference it soon before its gone"
    return 0
 }
