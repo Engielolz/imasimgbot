@@ -23,9 +23,10 @@ if [ "$1" = "--help" ]; then showHelp; exit 0; fi
 
 function login () {
    if [ -z "$1" ] || [ -z "$2" ]; then $iecho "login params not specified"; return 1; fi
-   getKeys $1 $2
+   didInit $1
+   getKeys $did $2
    if ! [ "$?" = "0" ]; then $iecho "failed to log in"; return 1
-   else saveKeys ./data/$idol/secrets.env
+   else saveSecrets ./data/$idol/secrets.env
    return 0
    fi
 }
@@ -62,7 +63,47 @@ function pickImage () {
    return
 }
 
+function incrementRecents () {
+   echo "stub; not implemented"
+   return 1
+}
+
+function idolReposting () {
+   $iecho "reposting for idols $otheridols"
+   echo "stub; not implemented"
+   return 1
+}
+
+function postIdolPic () {
+   $iecho "posting"
+   checkRefresh
+   prepareImageForBluesky $imagepath
+   if [ "$?" != "0" ]; then
+      $iecho "fatal: image prep failed!"
+      if [ -f $preparedImage ]; then rm -f $preparedImage; fi
+      return 1
+   fi
+   postBlobToPDS $preparedImage $preparedMime
+   if [ "$?" != "0" ]; then
+      $iecho "fatal: blob posting failed!"
+      if [ -f $preparedImage ]; then rm -f $preparedImage; fi
+      return 1
+   fi
+   rm $preparedImage
+   # check preparedMime/postedMime and preparedSize/postedSize
+   postImageToBluesky $postedBlob $postedMime $postedSize "$alt"
+   if [ "$?" != "0" ]; then
+      $iecho "fatal: image posting failed!"
+      return 1
+   fi
+   $iecho "image upload SUCCESS"
+   return 0
+}
+
 function postingLogic () {
+   dryrun=0
+   if [ "$1" = "--no-post" ]; then dryrun=1; fi
+   if [ "$1" = "--dry-run" ]; then dryrun=2; fi
    case "$(date +%m%d)" in
 
       "0109" | "0401")
@@ -93,7 +134,7 @@ function postingLogic () {
       fi
    fi
    image=$(pickImage $(echo "$images" | wc -l))
-   $iecho "picked image $image"
+   $iecho "picked image entry $image"
    # very dirty loadSecrets call, not using it as intended
    loadSecrets data/$idol/images/$image/info.txt
    if ! [ "$?" = "0" ]; then
@@ -101,13 +142,24 @@ function postingLogic () {
       echo $iecho "hint: if the above line is broken, it may be encoded in windows format"
       return 1
    fi
+   imagepath=data/$idol/images/$image/image.$imgtype
+   if ! [ -f $imagepath ]; then $iecho "fatal: image $imagepath does not exist"; return 1; fi
+   $iecho "location: $imagepath"
    $iecho "alt text: $alt"
    if [ -z "$otheridols" ]; then
       $iecho "image does not have other idols"
    else
       $iecho "image has other idols: $otheridols"
    fi
-   # images=$(cat data/$idol/images/$event.txt)
+   if [ "$dryrun" = "0" ]; then 
+      postIdolPic
+      if [ "$?" != "0" ]; then
+         $iecho "fatal: failed to post image!"
+         return 1
+      fi
+   fi
+   if ! [ "$dryrun" = "2" ]; then incrementRecents $image; fi
+   if ! [ -z "$otheridols" ]; then idolReposting; fi
    return 0
 }
 
@@ -125,7 +177,7 @@ if [ "$2" = "login" ]; then
    if [ "$3" = "--force" ]; then login $4 $5
    else $iecho "you are already logged in. Pass --force to log in anyway"; fi
 fi
-
-if [ "$2" = "post" ]; then postingLogic; fi
+did=$savedDID
+if [ "$2" = "post" ]; then postingLogic $3; fi
 if [ "$2" = "repost" ]; then repostLogic $3 $4; fi
 if [ -z "$2" ]; then $iecho "no operation specified"; exit 1; fi

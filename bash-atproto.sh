@@ -159,7 +159,9 @@ function postBlobToPDS () {
       $bapecho 'error: token needs to be refreshed'
       return 2
    fi
-   postedBlob=$(echo $result | jq -r .ref.'"$link"')
+   postedBlob=$(echo $result | jq -r .blob.ref.'"$link"')
+   postedMime=$(echo $result | jq -r .blob.mimeType)
+   postedSize=$(echo $result | jq -r .blob.size)
    $bapecho "Blob uploaded ($postedBlob) - reference it soon before its gone"
    return 0
 }
@@ -171,7 +173,7 @@ function postImageToBluesky () { #1: exception 2: refresh required
 # 3 - size
 # 4 - alt text
 # 5 - text
-   if [ -z "$4" ]; then $bapecho "fatal: more arguments required"; return 1; fi
+   if [ -z "$3" ]; then $bapecho "fatal: more arguments required"; return 1; fi
    # there is a disturbing lack of error checking
    result=$(curl --fail-with-body -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$did\", \"record\": { \"text\": \"$5\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"\$type\": \"app.bsky.embed.images\", \"images\": [ { \"alt\": \"$4\", \"image\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"$2\", \"size\": $3 } } ] } } } " "https://bsky.social/xrpc/com.atproto.repo.createRecord")
    error=$?
