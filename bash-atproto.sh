@@ -5,14 +5,12 @@ bapecho="echo bash-atproto:"
 did_regex="^did:\S*:\S*"
 coverWarn=0
 
-
 function loadSecrets () {
    if [[ -f $1 ]]; then while IFS= read -r line; do declare -g "$line"; done < "$1"
    return 0
    else return 1
    fi
 }
-
 
 function saveSecrets () {
    $bapecho 'Updating secrets'
@@ -139,8 +137,10 @@ function prepareImageForBluesky () { # 1: error 2 missing dep
       compressImageForBluesky
       if ! [ "$?" = "0" ]; then return 1; fi
    fi
+   $bapecho "process successful"
    preparedImage=/tmp/bash-atproto/$workfile
    preparedMime=$(file --mime-type -b $preparedImage)
+   preparedSize=$(stat -c %s $preparedImage)
    return 0
 }
 
@@ -159,12 +159,35 @@ function postBlobToPDS () {
       $bapecho 'error: token needs to be refreshed'
       return 2
    fi
-   uri=$(echo $result | jq -r .uri)
-   cid=$(echo $result | jq -r .cid)
-   $bapecho "Blob uploaded at $uri - reference it soon before its gone"
+   postedBlob=$(echo $result | jq -r .blob)
+   $bapecho "Blob uploaded ($postedBlob) - reference it soon before its gone"
    return 0
 }
 
+function postImageToBluesky () { #1: exception 2: refresh required
+# param:
+# 1 - blob
+# 2 - mimetype
+# 3 - size
+# 4 - alt text
+# 5 - text
+   if [ -z "$4" ]; then $bapecho "fatal: more arguments required"; return 1; fi
+   # there is a disturbing lack of error checking
+   result=$(curl --fail-with-body -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$did\", \"record\": { \"text\": \"$5\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"\$type\": \"app.bsky.embed.images\", \"images\": [ { \"alt\": \"$4\", \"image\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"$2\", \"size\": $filesize } } ] } } } " "https://bsky.social/xrpc/com.atproto.repo.createRecord")
+   error=$?
+   if [ "$error" != "0" ]; then
+      $bapecho 'warning: the post failed.'
+      if ! [ "$error" = "22" ]; then processCurlError postImageToBluesky; return 1; fi
+      APIErrorCode=$(echo $result | jq -r .error)
+      if ! [ "$APIErrorCode" = "ExpiredToken" ]; then processAPIError postImageToBluesky result; return 1; fi
+      $bapecho 'the token needs to be refreshed'
+      return 2
+   fi
+   uri=$(echo $result | jq -r .uri)
+   cid=$(echo $result | jq -r .cid)
+   $bapecho "Posted record at $uri"
+   return 0
+}
 
 function didInit () {
 skipDIDFetch=0
