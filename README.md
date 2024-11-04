@@ -2,7 +2,7 @@
 
 This is a bot powered by bash-atproto that posts random images of 765 Production idols.
 
-This bot is currently under development and does not function yet.
+
 
 **NOTE:** This script will not work properly on macOS due to using `sed -i`.
 

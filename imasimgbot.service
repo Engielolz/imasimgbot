@@ -1,0 +1,13 @@
+[Unit]
+Description=iM@S Image Bot
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+User=root
+WorkingDirectory=/usr/local/bin/imasimgbot
+ExecStart=/usr/local/bin/imasimgbot/imasimgbot.sh
+
+[Install]
+WantedBy=multi-user.target
