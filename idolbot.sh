@@ -24,6 +24,7 @@ if [ "$1" = "--help" ]; then showHelp; exit 0; fi
 function login () {
    if [ -z "$1" ] || [ -z "$2" ]; then $iecho "login params not specified"; return 1; fi
    didInit $1
+   if ! [ "$?" = "0" ]; then $iecho "did init failure"; return 1
    getKeys $did $2
    if ! [ "$?" = "0" ]; then $iecho "failed to log in"; return 1
    else saveSecrets ./data/$idol/secrets.env
@@ -185,8 +186,13 @@ if ! [ "$?" = "0" ]; then
    exit $?
 fi
 if [ "$2" = "login" ]; then
-   if [ "$3" = "--force" ]; then login $4 $5
-   else $iecho "you are already logged in. Pass --force to log in anyway"; fi
+   if [ "$3" = "--force" ]; then
+      login $4 $5
+      exit $?
+   else
+      $iecho "you are already logged in. Pass --force to log in anyway"
+      exit 2
+   fi
 fi
 did=$savedDID
 if [ "$2" = "post" ]; then postingLogic $3; fi
