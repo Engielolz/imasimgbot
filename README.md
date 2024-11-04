@@ -4,11 +4,13 @@ This is a bot powered by bash-atproto that posts random images of 765 Production
 
 This bot is currently under development and does not function yet.
 
+**NOTE:** This script will not work properly on macOS due to using `sed -i`.
+
 ## bash-atproto
 
 Information about bash-atproto is currently in the [765coverbot repo](https://github.com/engielolz/765coverbot).
 
-The version of bash-atproto in this repo is newer however and is not fully compatible with 765coverbot. This will change soon.
+imasimgbot uses all of its functions except postToBluesky.
 
 ### Dependencies
 
@@ -22,7 +24,7 @@ Posting images (required by imasimgbot) additionally requires:
 
 * imagemagick (`convert` and `identify`)
 
-The other dependencies should come with your Linux distro.
+The other dependencies (like uuidgen) should come with your Linux distro.
 
 ## Setup
 
