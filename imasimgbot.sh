@@ -23,13 +23,21 @@ function installService () {
    exit 0
 }
 
+function loginAll () {
+   for i in $(seq 1 $(cat data/idols.txt | wc -l)); do
+      ./idolbot.sh $(cat data/idols.txt | sed -n $i'p') login --interactive
+      if [ "$?" = "1" ]; then exit 1; fi
+   done
+   exit 0
+}
+
 source bash-atproto.sh
-if ! [ "$?" = "0" ]; then loadFail; fi
-source covergen.sh
 if ! [ "$?" = "0" ]; then loadFail; fi
 
 if [ "$1" = "--install" ]; then installService; fi
 if [ "$1" = "--uninstall" ]; then installService un; fi
+
+if [ "$1" = "init-secrets" ]; then loginAll; fi
 
 postInterval=3600 # post every hour
 
@@ -42,5 +50,7 @@ function napTime () {
 while :
 do
    napTime $postInterval
-
+   for i in $(seq 1 $(cat data/idols.txt | wc -l)); do
+      ./idolbot.sh $(cat data/idols.txt | sed -n $i'p') post
+   done
 done

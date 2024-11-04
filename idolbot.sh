@@ -24,12 +24,24 @@ if [ "$1" = "--help" ]; then showHelp; exit 0; fi
 function login () {
    if [ -z "$1" ] || [ -z "$2" ]; then $iecho "login params not specified"; return 1; fi
    didInit $1
-   if ! [ "$?" = "0" ]; then $iecho "did init failure"; return 1
+   if ! [ "$?" = "0" ]; then $iecho "did init failure"; return 1; fi
    getKeys $did $2
-   if ! [ "$?" = "0" ]; then $iecho "failed to log in"; return 1
-   else saveSecrets ./data/$idol/secrets.env
+   if ! [ "$?" = "0" ]; then $iecho "failed to log in"; return 1; fi
+   saveSecrets ./data/$idol/secrets.env
    return 0
-   fi
+}
+
+function interactiveLogin () {
+   read -p "$idol: Handle: " handle
+   read -sp "$idol: App Password: " apppassword
+   echo
+   didInit $handle
+   if ! [ "$?" = "0" ]; then $iecho "did init failure"; return 1; fi
+   getKeys $did $apppassword
+   if ! [ "$?" = "0" ]; then $iecho "failed to log in"; return 1; fi
+   saveSecrets ./data/$idol/secrets.env
+   apppassword=
+   return 0
 }
 
 function checkRefresh () {
@@ -182,7 +194,11 @@ iecho="echo $idol:"
 loadSecrets data/$idol/secrets.env
 if ! [ "$?" = "0" ]; then
    if ! [ "$2" = "login" ]; then $iecho "you need to login first."; exit 1; fi
-   login $3 $4
+   if ! [ "$3" = "--interactive" ]; then
+      login $3 $4
+   else
+      interactiveLogin
+   fi
    exit $?
 fi
 if [ "$2" = "login" ]; then
