@@ -64,14 +64,19 @@ function pickImage () {
 }
 
 function incrementRecents () {
-   echo "stub; not implemented"
-   return 1
+   $iecho "adding image to recents"
+   if ! [ -s data/$idol/recents.txt ]; then echo "" > data/$idol/recents.txt; fi
+   sed -i "1s/^/$image\n/" data/$idol/recents.txt
+   sed -i '25d' data/$idol/recents.txt # Hold the 24 most recent images
+   return 0
 }
 
 function idolReposting () {
    $iecho "reposting for idols $otheridols"
-   echo "stub; not implemented"
-   return 1
+   echo $otheridols | tr ',' '\n' | while read ridol; do
+      env -i $0 $ridol repost $uri $cid
+   done
+   return 0
 }
 
 function postIdolPic () {
@@ -123,11 +128,12 @@ function postingLogic () {
       ;;
    esac
    if ! [ -f data/$idol/images/$event.txt ]; then event=regular; fi
+   if ! [ -f data/$idol/recents.txt ]; then touch data/$idol/recents.txt; fi
    $iecho "Event: $event"
-   images=$(grep -xvf data/$idol/recent.txt data/$idol/images/$event.txt)
+   images=$(grep -xvf data/$idol/recents.txt data/$idol/images/$event.txt)
    if [ -z "$images" ]; then
       $iecho "warning: all $event images in recents. falling back to regular"
-      images=$(grep -xvf data/$idol/recent.txt data/$idol/images/regular.txt)
+      images=$(grep -xvf data/$idol/recents.txt data/$idol/images/regular.txt)
       if [ -z "$images" ]; then
          $iecho "warning: all regular images used recently! ignoring recents.txt"
          images=$(cat data/$idol/images/regular.txt)
@@ -157,9 +163,14 @@ function postingLogic () {
          $iecho "fatal: failed to post image!"
          return 1
       fi
+   else
+      $iecho "skipping post because --dry-run or --no-post specified"
    fi
    if ! [ "$dryrun" = "2" ]; then incrementRecents $image; fi
-   if ! [ -z "$otheridols" ]; then idolReposting; fi
+   if ! [ -z "$otheridols" ];  then
+      if [ "$dryrun" = "0" ]; then idolReposting
+      else $iecho "not reposting because --dry-run or --no-post specified"; fi
+   fi
    return 0
 }
 
