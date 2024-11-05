@@ -1,7 +1,11 @@
 #!/bin/bash
 
+function iberr () {
+   >&2 $iecho $*
+}
+
 function loadFail () {
-   echo "Cannot load required dependency script"
+   >&2 echo "Cannot load required dependency script"
    exit 127
 }
 
@@ -22,11 +26,11 @@ if [ "$1" = "--help" ]; then showHelp; exit 0; fi
 
 
 function login () {
-   if [ -z "$1" ] || [ -z "$2" ]; then $iecho "login params not specified"; return 1; fi
+   if [ -z "$1" ] || [ -z "$2" ]; then iberr "login params not specified"; return 1; fi
    didInit $1
-   if ! [ "$?" = "0" ]; then $iecho "did init failure"; return 1; fi
+   if ! [ "$?" = "0" ]; then iberr "did init failure"; return 1; fi
    getKeys $did $2
-   if ! [ "$?" = "0" ]; then $iecho "failed to log in"; return 1; fi
+   if ! [ "$?" = "0" ]; then iberr "failed to log in"; return 1; fi
    saveSecrets ./data/$idol/secrets.env
    return 0
 }
@@ -36,9 +40,9 @@ function interactiveLogin () {
    read -sp "$idol: App Password: " apppassword
    echo
    didInit $handle
-   if ! [ "$?" = "0" ]; then $iecho "did init failure"; return 1; fi
+   if ! [ "$?" = "0" ]; then iberr "did init failure"; return 1; fi
    getKeys $did $apppassword
-   if ! [ "$?" = "0" ]; then $iecho "failed to log in"; return 1; fi
+   if ! [ "$?" = "0" ]; then iberr "failed to log in"; return 1; fi
    saveSecrets ./data/$idol/secrets.env
    apppassword=
    return 0
@@ -49,7 +53,7 @@ function checkRefresh () {
       $iecho "Refreshing tokens"
       refreshKeys
       if ! [ "$?" = "0" ]; then
-         $iecho "Refresh error. Exiting."
+         iberr "Refresh error. Exiting."
          exit 1
       fi
       saveSecrets data/$idol/secrets.env
@@ -62,7 +66,7 @@ function repostLogic () {
    $iecho "Reposting $1 with CID $2"
    repostToBluesky $1 $2
    if [ "$?" != "0" ]; then
-      $iecho "Error when trying to repost."
+      iberr "Error when trying to repost."
       return 1
    else
       $iecho "Repost succeeded."
@@ -78,9 +82,8 @@ function pickImage () {
 
 function incrementRecents () {
    $iecho "adding image to recents"
-   if ! [ -s data/$idol/recents.txt ]; then echo "" > data/$idol/recents.txt; fi
-   sed -i "1s/^/$image\n/" data/$idol/recents.txt
-   sed -i '25d' data/$idol/recents.txt # Hold the 24 most recent images
+   if ! [ -s data/$idol/$event-recents.txt ]; then echo "" > data/$idol/$event-recents.txt; fi
+   sed -i "1s/^/$image\n/" data/$idol/$event-recents.txt
    return 0
 }
 
@@ -97,13 +100,13 @@ function postIdolPic () {
    checkRefresh
    prepareImageForBluesky $imagepath
    if [ "$?" != "0" ]; then
-      $iecho "fatal: image prep failed!"
+      iberr "fatal: image prep failed!"
       if [ -f $preparedImage ]; then rm -f $preparedImage; fi
       return 1
    fi
    postBlobToPDS $preparedImage $preparedMime
    if [ "$?" != "0" ]; then
-      $iecho "fatal: blob posting failed!"
+      iberr "fatal: blob posting failed!"
       if [ -f $preparedImage ]; then rm -f $preparedImage; fi
       return 1
    fi
@@ -111,17 +114,14 @@ function postIdolPic () {
    # check preparedMime/postedMime and preparedSize/postedSize
    postImageToBluesky $postedBlob $postedMime $postedSize "$alt"
    if [ "$?" != "0" ]; then
-      $iecho "fatal: image posting failed!"
+      iberr "fatal: image posting failed!"
       return 1
    fi
    $iecho "image upload SUCCESS"
    return 0
 }
 
-function postingLogic () {
-   dryrun=0
-   if [ "$1" = "--no-post" ]; then dryrun=1; fi
-   if [ "$1" = "--dry-run" ]; then dryrun=2; fi
+function eventHandler () {
    case "$(date +%m%d)" in
 
       "0109" | "0401")
@@ -141,28 +141,32 @@ function postingLogic () {
       ;;
    esac
    if ! [ -f data/$idol/images/$event.txt ]; then event=regular; fi
-   if ! [ -f data/$idol/recents.txt ]; then touch data/$idol/recents.txt; fi
+}
+
+function postingLogic () {
+   dryrun=0
+   if [ "$1" = "--no-post" ]; then dryrun=1; fi
+   if [ "$1" = "--dry-run" ]; then dryrun=2; fi
+   eventHandler
+   if ! [ -f data/$idol/$event-recents.txt ]; then touch data/$idol/$event-recents.txt; fi
    $iecho "Event: $event"
-   images=$(grep -xvf data/$idol/recents.txt data/$idol/images/$event.txt)
+   images=$(grep -xvf data/$idol/$event-recents.txt data/$idol/images/$event.txt)
    if [ -z "$images" ]; then
-      $iecho "warning: all $event images in recents. falling back to regular"
-      images=$(grep -xvf data/$idol/recents.txt data/$idol/images/regular.txt)
-      if [ -z "$images" ]; then
-         $iecho "warning: all regular images used recently! ignoring recents.txt"
-         images=$(cat data/$idol/images/regular.txt)
-      fi
+      $iecho "resetting recents queue for $event"
+      echo > data/$idol/$event-recents.txt
+      images=$(grep -xvf data/$idol/$event-recents.txt data/$idol/images/$event.txt)
    fi
    image=$(pickImage $(echo "$images" | wc -l))
    $iecho "picked image entry $image"
    # very dirty loadSecrets call, not using it as intended
    loadSecrets data/$idol/images/$image/info.txt
    if ! [ "$?" = "0" ]; then
-      echo $iecho "fatal: the image data for $image is missing"
-      echo $iecho "hint: if the above line is broken, it may be encoded in windows format"
+      echo iberr "fatal: the image data for $image is missing"
+      echo iberr "hint: if the above line is broken, it may be encoded in windows format"
       return 1
    fi
    imagepath=data/$idol/images/$image/image.$imgtype
-   if ! [ -f $imagepath ]; then $iecho "fatal: image $imagepath does not exist"; return 1; fi
+   if ! [ -f $imagepath ]; then iberr "fatal: image $imagepath does not exist"; return 1; fi
    $iecho "location: $imagepath"
    $iecho "alt text: $alt"
    if [ -z "$otheridols" ]; then
@@ -173,7 +177,7 @@ function postingLogic () {
    if [ "$dryrun" = "0" ]; then 
       postIdolPic
       if [ "$?" != "0" ]; then
-         $iecho "fatal: failed to post image!"
+         iberr "fatal: failed to post image!"
          return 1
       fi
    else
@@ -187,13 +191,14 @@ function postingLogic () {
    return 0
 }
 
-if ! [ -d ./data/$1 ]; then echo "idolbot: No such idol: $1"; exit 1; fi
+if ! [ -d ./data/$1 ]; then
+   >&2 echo "idolbot: No such idol: $1"; exit 1; fi
 
 idol=$1
 iecho="echo $idol:"
 loadSecrets data/$idol/secrets.env
 if ! [ "$?" = "0" ]; then
-   if ! [ "$2" = "login" ]; then $iecho "you need to login first."; exit 1; fi
+   if ! [ "$2" = "login" ]; then iberr "you need to login first."; exit 1; fi
    if ! [ "$3" = "--interactive" ]; then
       login $3 $4
    else
@@ -206,11 +211,11 @@ if [ "$2" = "login" ]; then
       login $4 $5
       exit $?
    else
-      $iecho "you are already logged in. Pass --force to log in anyway"
+      iberr "you are already logged in. Pass --force to log in anyway"
       exit 2
    fi
 fi
 did=$savedDID
 if [ "$2" = "post" ]; then postingLogic $3; fi
 if [ "$2" = "repost" ]; then repostLogic $3 $4; fi
-if [ -z "$2" ]; then $iecho "no operation specified"; exit 1; fi
+if [ -z "$2" ]; then iberr "no operation specified"; exit 1; fi
