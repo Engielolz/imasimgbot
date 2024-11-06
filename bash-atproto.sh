@@ -123,7 +123,7 @@ function resizeImageForBluesky () {
 
 function compressImageForBluesky () {
    $bapecho "image is too big, trying to compress"
-   convert /tmp/bash-atproto/$workfile /tmp/bash-atproto/new-${workfile%.*}.jpg
+   convert /tmp/bash-atproto/$workfile -define jpeg:extent=1000kb /tmp/bash-atproto/new-${workfile%.*}.jpg
    if [[ $(stat -c %s /tmp/bash-atproto/new-${workfile%.*}.jpg) -gt 1000000 ]]; then baperr "image too big to fit in skeet"; rm /tmp/bash-atproto/$workfile /tmp/bash-atproto/new-${workfile%.*}.jpg; return 1; fi
    rm /tmp/bash-atproto/$workfile
    mv -f /tmp/bash-atproto/new-${workfile%.*}.jpg /tmp/bash-atproto/${workfile%.*}.jpg
