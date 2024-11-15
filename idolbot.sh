@@ -96,7 +96,7 @@ function idolReposting () {
 }
 
 function postIdolPic () {
-   $iecho "posting"
+   $iecho "preparing image"
    checkRefresh
    prepareImageForBluesky $imagepath
    if [ "$?" != "0" ]; then
@@ -104,6 +104,7 @@ function postIdolPic () {
       if [ -f $preparedImage ]; then rm -f $preparedImage; fi
       return 1
    fi
+   $iecho "uploading image to pds"
    postBlobToPDS $preparedImage $preparedMime
    if [ "$?" != "0" ]; then
       iberr "fatal: blob posting failed!"
@@ -112,12 +113,32 @@ function postIdolPic () {
    fi
    rm $preparedImage
    # check preparedMime/postedMime and preparedSize/postedSize
+   $iecho "posting image"
    postImageToBluesky $postedBlob $postedMime $postedSize "$alt"
    if [ "$?" != "0" ]; then
       iberr "fatal: image posting failed!"
       return 1
    fi
    $iecho "image upload SUCCESS"
+   return 0
+}
+
+function postIdolVideo () {
+   checkRefresh
+   $iecho "uploading video to pds"
+   postBlobToPDS $imagepath "video/mp4"
+   if [ "$?" != "0" ]; then
+      iberr "fatal: blob posting failed!"
+      return 1
+   fi
+   # check preparedMime/postedMime and preparedSize/postedSize
+   $iecho "posting video"
+   postVideoToBluesky $postedBlob $postedSize "$alt"
+   if [ "$?" != "0" ]; then
+      iberr "fatal: video posting failed!"
+      return 1
+   fi
+   $iecho "video upload SUCCESS (may take time to process)"
    return 0
 }
 
@@ -157,11 +178,11 @@ function postingLogic () {
       images=$(grep -xvf data/$idol/$event-recents.txt data/$idol/images/$event.txt)
    fi
    image=$(pickImage $(echo "$images" | wc -l))
-   $iecho "picked image entry $image"
+   $iecho "picked entry $image"
    # very dirty loadSecrets call, not using it as intended
    loadSecrets data/$idol/images/$image/info.txt
    if ! [ "$?" = "0" ]; then
-      echo iberr "fatal: the image data for $image is missing"
+      echo iberr "fatal: the entry data for $image is missing"
       echo iberr "hint: if the above line is broken, it may be encoded in windows format"
       return 1
    fi
@@ -170,14 +191,14 @@ function postingLogic () {
    $iecho "location: $imagepath"
    $iecho "alt text: $alt"
    if [ -z "$otheridols" ]; then
-      $iecho "image does not have other idols"
+      $iecho "entry does not have other idols"
    else
-      $iecho "image has other idols: $otheridols"
+      $iecho "entry has other idols: $otheridols"
    fi
-   if [ "$dryrun" = "0" ]; then 
-      postIdolPic
+   if [ "$dryrun" = "0" ]; then
+      if ! [ "$imgtype" = "mp4" ]; then postIdolPic; else postIdolVideo; fi
       if [ "$?" != "0" ]; then
-         iberr "fatal: failed to post image!"
+         iberr "fatal: failed to post!"
          return 1
       fi
    else
