@@ -5,7 +5,7 @@ function loadFail () {
 }
 
 function printerr () {
-   echo "in $image: $1"
+   >&2 echo "in $image: $1"
    errordata+="$idol/$event $image: $1
 "
 }
@@ -31,7 +31,7 @@ for i in $(seq 1 $(cat data/idols.txt | wc -l)); do
       if ! [ "$?" = "0" ]; then printerr "no image data"; continue; fi
       if [ -z "$imgtype" ]; then printerr "no imgtype"; continue; fi
       if ! [ -f "data/$idol/images/$image/image.$imgtype" ]; then printerr "no image"; continue; fi
-      if [ "$scan" = "1" ]; then
+      if [ "$scan" = "1" ] && ! [ "$imgtype" = "mp4" ]; then
          prepareImageForBluesky "data/$idol/images/$image/image.$imgtype" >/dev/null 2>&1
          if [ "$?" != "0" ]; then
             printerr "failed to prep image"
@@ -44,6 +44,6 @@ done
 
 if [ -z "$errordata" ]; then echo "No errors encountered."
 else
-   echo "Errors encountered:"
-   echo "$errordata"
+   >&2 echo "Errors encountered:"
+   >&2 echo "$errordata"
 fi
