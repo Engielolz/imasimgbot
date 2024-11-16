@@ -29,6 +29,8 @@ function login () {
    if [ -z "$1" ] || [ -z "$2" ]; then iberr "login params not specified"; return 1; fi
    didInit $1
    if ! [ "$?" = "0" ]; then iberr "did init failure"; return 1; fi
+   findPDS $did
+   if ! [ "$?" = "0" ]; then iberr "failed to resolve PDS"; return 1; fi
    getKeys $did $2
    if ! [ "$?" = "0" ]; then iberr "failed to log in"; return 1; fi
    saveSecrets ./data/$idol/secrets.env
@@ -41,6 +43,8 @@ function interactiveLogin () {
    echo
    didInit $handle
    if ! [ "$?" = "0" ]; then iberr "did init failure"; return 1; fi
+   findPDS $did
+   if ! [ "$?" = "0" ]; then iberr "failed to resolve PDS"; return 1; fi
    getKeys $did $apppassword
    if ! [ "$?" = "0" ]; then iberr "failed to log in"; return 1; fi
    saveSecrets ./data/$idol/secrets.env
@@ -262,6 +266,10 @@ if [ "$2" = "login" ]; then
    fi
 fi
 did=$savedDID
+if [ -z "$savedPDS" ]; then
+   findPDS $did
+   if ! [ "$?" = 0 ]; then iberr "PDS lookup failure"; exit 1; fi
+fi
 if [ "$2" = "post" ]; then postingLogic $3; fi
 if [ "$2" = "repost" ]; then repostLogic $3 $4; fi
 if [ -z "$2" ]; then iberr "no operation specified"; exit 1; fi
