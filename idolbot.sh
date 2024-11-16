@@ -97,13 +97,18 @@ function idolReposting () {
 
 function postIdolPic () {
    $iecho "preparing image"
-   checkRefresh
    prepareImageForBluesky $imagepath
    if [ "$?" != "0" ]; then
       iberr "fatal: image prep failed!"
       if [ -f $preparedImage ]; then rm -f $preparedImage; fi
       return 1
    fi
+   if ! [ "$dryrun" = "0" ]; then
+      $iecho "skipping post because --dry-run or --no-post specified"
+      rm $preparedImage
+      return 0
+   fi
+   checkRefresh
    $iecho "uploading image to pds"
    postBlobToPDS $preparedImage $preparedMime
    if [ "$?" != "0" ]; then
@@ -164,13 +169,7 @@ function eventHandler () {
    if ! [ -f data/$idol/images/$event.txt ]; then event=regular; fi
 }
 
-function postingLogic () {
-   dryrun=0
-   if [ "$1" = "--no-post" ]; then dryrun=1; fi
-   if [ "$1" = "--dry-run" ]; then dryrun=2; fi
-   eventHandler
-   if ! [ -f data/$idol/$event-recents.txt ]; then touch data/$idol/$event-recents.txt; fi
-   $iecho "Event: $event"
+function checkImage () {
    images=$(grep -xvf data/$idol/$event-recents.txt data/$idol/images/$event.txt)
    if [ -z "$images" ]; then
       $iecho "resetting recents queue for $event"
@@ -195,14 +194,40 @@ function postingLogic () {
    else
       $iecho "entry has other idols: $otheridols"
    fi
-   if [ "$dryrun" = "0" ]; then
-      if ! [ "$imgtype" = "mp4" ]; then postIdolPic; else postIdolVideo; fi
+   return 0
+}
+
+function postingLogic () {
+   dryrun=0
+   if [ "$1" = "--no-post" ]; then dryrun=1; fi
+   if [ "$1" = "--dry-run" ]; then dryrun=2; fi
+   eventHandler
+   if ! [ -f data/$idol/$event-recents.txt ]; then touch data/$idol/$event-recents.txt; fi
+   $iecho "Event: $event"
+   while :
+   do
+      checkImage
+      if [ "$?" = "0" ]; then break; fi
+      ((imageRetries+=1))
+      if [ "$imageRetries" = "10" ]; then iberr "fatal: image retry limit reached"; return 1; fi
+      iberr "warning: trying another image ($imageRetries/10)..."
+   done
+   if ! [ "$imgtype" = "mp4" ]; then
+      postIdolPic
       if [ "$?" != "0" ]; then
-         iberr "fatal: failed to post!"
+         iberr "fatal: failed to post image!"
          return 1
       fi
    else
-      $iecho "skipping post because --dry-run or --no-post specified"
+      if [ "$dryrun" = "0" ]; then
+         postIdolVideo
+         if [ "$?" != "0" ]; then
+            iberr "fatal: failed to post video!"
+            return 1
+         fi
+      else
+         $iecho "skipping post because --dry-run or --no-post specified"
+      fi
    fi
    if ! [ "$dryrun" = "2" ]; then incrementRecents $image; fi
    if ! [ -z "$otheridols" ];  then
