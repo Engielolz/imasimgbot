@@ -17,6 +17,17 @@ function showHelp () {
    echo "repost - repost another idol bot's post"
 }
 
+function loadConfig () {
+   if [[ -f $1 ]]; then while IFS= read -r line; do
+      # Don't read comments (like this one)
+      if [[ $line = \#* ]]; then continue; fi
+      declare -g "$line"
+   done < "$1"
+   return 0
+   else return 1
+   fi
+}
+
 source ./bash-atproto.sh
 if ! [ "$?" = "0" ]; then loadFail; fi
 
@@ -101,29 +112,29 @@ function idolReposting () {
 
 function postIdolPic () {
    $iecho "preparing image"
-   prepareImageForBluesky $imagepath
+   bap_prepareImageForBluesky $imagepath
    if [ "$?" != "0" ]; then
       iberr "fatal: image prep failed!"
-      if [ -f $preparedImage ]; then rm -f $preparedImage; fi
+      if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
       return 1
    fi
    if ! [ "$dryrun" = "0" ]; then
       $iecho "skipping post because --dry-run or --no-post specified"
-      rm $preparedImage
+      rm $bap_preparedImage
       return 0
    fi
    checkRefresh
    $iecho "uploading image to pds"
-   postBlobToPDS $preparedImage $preparedMime
+   postBlobToPDS $bap_preparedImage $bap_preparedMime
    if [ "$?" != "0" ]; then
       iberr "fatal: blob posting failed!"
-      if [ -f $preparedImage ]; then rm -f $preparedImage; fi
+      if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
       return 1
    fi
-   rm $preparedImage
+   rm $bap_preparedImage
    # check preparedMime/postedMime and preparedSize/postedSize
    $iecho "posting image"
-   postImageToBluesky $postedBlob $postedMime $postedSize "$alt"
+   bap_postImageToBluesky $bap_postedBlob $bap_postedMime $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt"
    if [ "$?" != "0" ]; then
       iberr "fatal: image posting failed!"
       return 1
@@ -170,6 +181,7 @@ function eventHandler () {
       event=regular
       ;;
    esac
+   if [ "$(TZ=Japan date +%m%d)" = "$birthday" ]; then event=birthday; fi
    if ! [ -f data/$idol/images/$event.txt ]; then event=regular; fi
 }
 
@@ -182,8 +194,7 @@ function checkImage () {
    fi
    image=$(pickImage $(echo "$images" | wc -l))
    $iecho "picked entry $image"
-   # very dirty loadSecrets call, not using it as intended
-   loadSecrets data/$idol/images/$image/info.txt
+   loadConfig data/$idol/images/$image/info.txt
    if ! [ "$?" = "0" ]; then
       echo iberr "fatal: the entry data for $image is missing"
       echo iberr "hint: if the above line is broken, it may be encoded in windows format"
@@ -205,6 +216,7 @@ function postingLogic () {
    dryrun=0
    if [ "$1" = "--no-post" ]; then dryrun=1; fi
    if [ "$1" = "--dry-run" ]; then dryrun=2; fi
+   loadConfig data/$idol/idol.txt
    eventHandler
    if ! [ -f data/$idol/$event-recents.txt ]; then touch data/$idol/$event-recents.txt; fi
    $iecho "Event: $event"

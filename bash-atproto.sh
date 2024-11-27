@@ -116,14 +116,14 @@ function repostToBluesky () { # arguments 1 is uri, 2 is cid. error codes same a
    return 0
 }
 
-function resizeImageForBluesky () {
+function bapHelper_resizeImageForBluesky () {
    $bapecho "need to resize image"
    convert /tmp/bash-atproto/$workfile -resize 2000x2000 /tmp/bash-atproto/new-$workfile
    if ! [ "$?" = "0" ]; then baperr "fatal: convert failed!"; rm /tmp/bash-atproto/$workfile 2>/dev/null; return 1; fi
    mv -f /tmp/bash-atproto/new-$workfile /tmp/bash-atproto/$workfile
 }
 
-function compressImageForBluesky () {
+function bapHelper_compressImageForBluesky () {
    $bapecho "image is too big, trying to compress"
    convert /tmp/bash-atproto/$workfile -define jpeg:extent=1000kb /tmp/bash-atproto/new-${workfile%.*}.jpg
    if [[ ! "$?" = "0" ]] || [[ $(stat -c %s /tmp/bash-atproto/new-${workfile%.*}.jpg) -gt 1000000 ]]; then baperr "fatal: error compressing image or image too big to fit in skeet"; rm /tmp/bash-atproto/$workfile /tmp/bash-atproto/new-${workfile%.*}.jpg; return 1; fi
@@ -132,22 +132,27 @@ function compressImageForBluesky () {
    workfile=${workfile%.*}.jpg
 }
 
-function prepareImageForBluesky () { # 1: error 2 missing dep
+function bap_prepareImageForBluesky () { # 1: error 2 missing dep
    if [ -z "$1" ]; then baperr "fatal: no image specified to prepare"; return 1; fi
    mkdir /tmp/bash-atproto 2>/dev/null
    workfile=$(uuidgen)."${1##*.}"
    cp $1 /tmp/bash-atproto/$workfile
    exiftool -all= /tmp/bash-atproto/$workfile -overwrite_original
    if ! [ "$?" = "0" ]; then baperr "fatal: exiftool failed!"; rm /tmp/bash-atproto/$workfile 2>/dev/null; return 1; fi
-   if [[ $(identify -format '%w' /tmp/bash-atproto/$workfile) -gt 2000 ]] || [[ $(identify -format '%h' /tmp/bash-atproto/$workfile) -gt 2000 ]]; then resizeImageForBluesky; fi
+   if [[ $(identify -format '%w' /tmp/bash-atproto/$workfile) -gt 2000 ]] || [[ $(identify -format '%h' /tmp/bash-atproto/$workfile) -gt 2000 ]]; then
+      bapHelper_resizeImageForBluesky
+      if ! [ "$?" = "0" ]; then return 1; fi
+   fi
    if [[ $(stat -c %s /tmp/bash-atproto/$workfile) -gt 1000000 ]]; then 
-      compressImageForBluesky
+      bapHelper_compressImageForBluesky
       if ! [ "$?" = "0" ]; then return 1; fi
    fi
    $bapecho "image preparation successful"
-   preparedImage=/tmp/bash-atproto/$workfile
-   preparedMime=$(file --mime-type -b $preparedImage)
-   preparedSize=$(stat -c %s $preparedImage)
+   bap_preparedImage=/tmp/bash-atproto/$workfile
+   bap_preparedMime=$(file --mime-type -b $bap_preparedImage)
+   bap_preparedSize=$(stat -c %s $bap_preparedImage)
+   bap_imageWidth=$(identify -format '%w' $bap_preparedImage)
+   bap_imageHeight=$(identify -format '%h' $bap_preparedImage)
    return 0
 }
 
@@ -166,23 +171,25 @@ function postBlobToPDS () {
       $bapecho 'error: token needs to be refreshed'
       return 2
    fi
-   postedBlob=$(echo $result | jq -r .blob.ref.'"$link"')
-   postedMime=$(echo $result | jq -r .blob.mimeType)
-   postedSize=$(echo $result | jq -r .blob.size)
+   bap_postedBlob=$(echo $result | jq -r .blob.ref.'"$link"')
+   bap_postedMime=$(echo $result | jq -r .blob.mimeType)
+   bap_postedSize=$(echo $result | jq -r .blob.size)
    $bapecho "Blob uploaded ($postedBlob) - reference it soon before its gone"
    return 0
 }
 
-function postImageToBluesky () { #1: exception 2: refresh required
+function bap_postImageToBluesky () { #1: exception 2: refresh required
 # param:
 # 1 - blob
 # 2 - mimetype
 # 3 - size
-# 4 - alt text
-# 5 - text
-   if [ -z "$3" ]; then baperr "fatal: more arguments required"; return 1; fi
+# 4 - width
+# 5 - height
+# 6 - alt text
+# 7 - text
+   if [ -z "$5" ]; then baperr "fatal: more arguments required"; return 1; fi
    # there is a disturbing lack of error checking
-   result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$did\", \"record\": { \"text\": \"$5\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"\$type\": \"app.bsky.embed.images\", \"images\": [ { \"alt\": \"$4\", \"image\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"$2\", \"size\": $3 } } ] } } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
+   result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$did\", \"record\": { \"text\": \"$7\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"\$type\": \"app.bsky.embed.images\", \"images\": [ { \"alt\": \"$6\", \"aspectRatio\": { \"height\": $5, \"width\": $6 }, \"image\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"$2\", \"size\": $3 } } ] } } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
    error=$?
    if [ "$error" != "0" ]; then
       baperr 'warning: the post failed.'
