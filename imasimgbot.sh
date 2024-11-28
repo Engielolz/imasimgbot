@@ -31,6 +31,12 @@ function loginAll () {
    exit 0
 }
 
+function postAll () {
+   for i in $(seq 1 $(cat data/idols.txt | wc -l)); do
+      ./idolbot.sh $(cat data/idols.txt | sed -n $i'p') post
+   done
+}
+
 source bash-atproto.sh
 if ! [ "$?" = "0" ]; then loadFail; fi
 
@@ -47,12 +53,6 @@ function napTime () {
    sleeptime=$(($1 - $(date +%s) % $1))
    echo "Sleeping until $(date -d @$(($(date +%s) + $sleeptime)))"
    sleep $sleeptime
-}
-
-function postAll () {
-   for i in $(seq 1 $(cat data/idols.txt | wc -l)); do
-      ./idolbot.sh $(cat data/idols.txt | sed -n $i'p') post
-   done
 }
 
 while :
