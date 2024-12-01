@@ -153,7 +153,7 @@ function postIdolVideo () {
    fi
    # check preparedMime/postedMime and preparedSize/postedSize
    $iecho "posting video"
-   postVideoToBluesky $postedBlob $postedSize "$alt"
+   postVideoToBluesky $bap_postedBlob $bap_postedSize "$alt"
    if [ "$?" != "0" ]; then
       iberr "fatal: video posting failed!"
       return 1
