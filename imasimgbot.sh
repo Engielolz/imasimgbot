@@ -33,8 +33,10 @@ function loginAll () {
 
 function postAll () {
    for i in $(seq 1 $(cat data/idols.txt | wc -l)); do
-      ./idolbot.sh $(cat data/idols.txt | sed -n $i'p') post
+      ./idolbot.sh $(cat data/idols.txt | sed -n $i'p') post &
+      if [ "$(jobs -p | wc -l)" -ge "$(nproc)" ]; then wait -n; fi
    done
+   wait
 }
 
 source bash-atproto.sh
