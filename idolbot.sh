@@ -37,7 +37,7 @@ if [ "$1" = "--help" ]; then showHelp; exit 0; fi
 
 
 function login () {
-   if [ -z "$1" ] || [ -z "$2" ]; then iberr "login params not specified"; return 1; fi
+   if [ -z "$2" ]; then iberr "login params not specified"; return 1; fi
    didInit $1
    if ! [ "$?" = "0" ]; then iberr "did init failure"; return 1; fi
    findPDS $did
@@ -96,9 +96,17 @@ function pickImage () {
 }
 
 function incrementRecents () {
-   $iecho "adding image to recents"
-   if ! [ -s data/$idol/$event-recents.txt ]; then echo "" > data/$idol/$event-recents.txt; fi
-   sed -i "1s/^/$image\n/" data/$idol/$event-recents.txt
+   if ! [ -s $1 ]; then echo "" > $1; fi
+   sed -i "1s/^/$image\n/" $1
+   return 0
+}
+
+function incrementGlobalRecents () {
+   if ! [ -s data/$idol/recents.txt ]; then echo "" > data/$idol/recents.txt; fi
+   sed -i "1s/^/$image\n/" data/$idol/recents.txt
+   if [ -z "$globalQueueSize" ]; then globalQueueSize=24; fi
+   ((globalQueueSize+=1))
+   sed -i "$globalQueueSize,$ d" data/$idol/recents.txt
    return 0
 }
 
@@ -194,6 +202,9 @@ function checkImage () {
    fi
    image=$(pickImage $(echo "$images" | wc -l))
    $iecho "picked entry $image"
+}
+
+function loadImage () {
    loadConfig data/$idol/images/$image/info.txt
    if ! [ "$?" = "0" ]; then
       echo iberr "fatal: the entry data for $image is missing"
@@ -217,17 +228,29 @@ function postingLogic () {
    if [ "$1" = "--no-post" ]; then dryrun=1; fi
    if [ "$1" = "--dry-run" ]; then dryrun=2; fi
    loadConfig data/$idol/idol.txt
-   eventHandler
-   if ! [ -f data/$idol/$event-recents.txt ]; then touch data/$idol/$event-recents.txt; fi
-   $iecho "Event: $event"
-   while :
-   do
-      checkImage
-      if [ "$?" = "0" ]; then break; fi
-      ((imageRetries+=1))
-      if [ "$imageRetries" = "10" ]; then iberr "fatal: image retry limit reached"; return 1; fi
-      iberr "warning: trying another image ($imageRetries/10)..."
-   done
+   if ! [ -z "$imageOverride" ]; then
+      image=$imageOverride
+      $iecho "Using image override"
+      loadImage
+      if ! [ "$?" = "0" ]; then
+         iberr "fatal: the image override cannot be used"
+         sed -i "s/imageOverride=$imageOverride/imageOverride=/g" data/$idol/idol.txt
+         return 1
+      fi
+   else
+      eventHandler
+      if ! [ -f data/$idol/$event-recents.txt ]; then touch data/$idol/$event-recents.txt; fi
+      $iecho "Event: $event"
+      while :
+      do
+         checkImage
+         loadImage
+         if [ "$?" = "0" ]; then break; fi
+         ((imageRetries+=1))
+         if [ "$imageRetries" = "10" ]; then iberr "fatal: image retry limit reached"; return 1; fi
+         iberr "warning: trying another image ($imageRetries/10)..."
+      done
+   fi
    if ! [ "$imgtype" = "mp4" ]; then
       postIdolPic
       if [ "$?" != "0" ]; then
@@ -245,7 +268,12 @@ function postingLogic () {
          $iecho "skipping post because --dry-run or --no-post specified"
       fi
    fi
-   if ! [ "$dryrun" = "2" ]; then incrementRecents $image; fi
+   if ! [ "$dryrun" = "2" ]; then
+      $iecho "adding image to recents"
+      incrementGlobalRecents
+      if [ -z "$imageOverride" ]; then incrementRecents data/$idol/$event-recents.txt; fi
+   fi
+   if ! [ -z "$imageOverride" ] && ! [ "$dryrun" = "2" ] && ! [ "$clearImageOverride" = "0" ]; then sed -i "s/imageOverride=$imageOverride/imageOverride=/g" data/$idol/idol.txt; fi
    if ! [ -z "$otheridols" ];  then
       if [ "$dryrun" = "0" ]; then idolReposting
       else $iecho "not reposting because --dry-run or --no-post specified"; fi
