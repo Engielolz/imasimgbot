@@ -227,12 +227,12 @@ function checkImage () {
    if [ -z "$images" ]; then
       $iecho "resetting recents queue for $event"
       echo > data/$idol/$event-recents.txt
-      images=$(grep -xvf data/$idol/$event-recents.txt data/$idol/images/$event.txt)
+      images=$(grep -xvf data/$idol/recents.txt -f data/$idol/$event-recents.txt data/$idol/images/$event.txt)
    fi
    if [ -z "$(grep -xvf data/$idol/recents.txt data/$idol/images/$event.txt)" ]; then
          iberr "warning: the global recents queue is too big for the event $event"
          iberr "hint: in idol.txt, set globalQueueSize to a lower value"
-         images=$(cat data/$idol/images/$event.txt)
+         images=$(grep -xvf data/$idol/$event-recents.txt data/$idol/images/$event.txt)
    fi
    if [ -z "$images" ]; then iberr "error: no valid image entries"; return 1; fi
    image=$(pickImage $(echo "$images" | wc -l))
