@@ -1,4 +1,6 @@
 #!/bin/bash
+internalIdolVer=1
+svcInterval=900 # must match postInterval in imasimgbot.sh
 
 function iberr () {
    >&2 $iecho $*
@@ -20,7 +22,7 @@ function showHelp () {
 function loadConfig () {
    if [[ -f $1 ]]; then while IFS= read -r line; do
       # Don't read comments (like this one)
-      if [[ $line = \#* ]]; then continue; fi
+      if [[ $line = \#* ]] || [ -z "$line" ]; then continue; fi
       declare -g "$line"
    done < "$1"
    return 0
@@ -35,6 +37,33 @@ if ! [ "$?" = "0" ]; then loadFail; fi
 if [ -z "$1" ]; then showHelp badParam; exit 1; fi
 if [ "$1" = "--help" ]; then showHelp; exit 0; fi
 
+function refreshTxtCfg () {
+   $iecho "updating idol.txt to new version"
+   if [ -z "$postInterval" ]; then postInterval=4; fi
+   if [ -z "$globalQueueSize" ]; then globalQueueSize=24; fi
+   if [ -z "$clearImageOverride" ]; then clearImageOverride=1; fi
+   cat >data/$idol/idol.txt <<EOF
+# Version of this file. Don't touch this.
+idolTxtVersion=$internalIdolVer
+
+# Post every # runs (default 15 minutes)
+postInterval=$postInterval
+# The unix timestamp when it should post next
+nextPostTime=$nextPostTime
+
+# The # latest used images will not be posted. Set to 0 to disable
+globalQueueSize=$globalQueueSize
+
+# Enter the name of an image to post it instead of picking
+imageOverride=$imageOverride
+# Set this to 0 to always post the override (otherwise it's posted only once)
+clearImageOverride=$clearImageOverride
+EOF
+}
+
+function updateIdolTxt () {
+   sed -i "s/$1=${!1}/$1=$2/g" data/$idol/idol.txt
+}
 
 function login () {
    if [ -z "$2" ]; then iberr "login params not specified"; return 1; fi
@@ -229,11 +258,19 @@ function loadImage () {
    return 0
 }
 
+function postTimer () {
+   # if not next post time, return and do nothing
+   if [ "$nextPostTime" -gt "$(date +%s)" ]; then return 0; fi
+   postingLogic
+   if ! [ "$?" = "0" ]; then return 1; fi
+   updateIdolTxt nextPostTime $(($(date +%s) + (($postInterval * $svcInterval) - $(date +%s) % ($postInterval * $svcInterval))))
+   return 0;
+}
+
 function postingLogic () {
    dryrun=0
    if [ "$1" = "--no-post" ]; then dryrun=1; fi
    if [ "$1" = "--dry-run" ]; then dryrun=2; fi
-   loadConfig data/$idol/idol.txt
    if ! [ -z "$imageOverride" ]; then
       image=$imageOverride
       $iecho "Using image override"
@@ -279,7 +316,7 @@ function postingLogic () {
       incrementGlobalRecents
       if [ -z "$imageOverride" ]; then incrementRecents data/$idol/$event-recents.txt; fi
    fi
-   if ! [ -z "$imageOverride" ] && ! [ "$dryrun" = "2" ] && ! [ "$clearImageOverride" = "0" ]; then sed -i "s/imageOverride=$imageOverride/imageOverride=/g" data/$idol/idol.txt; fi
+   if ! [ -z "$imageOverride" ] && ! [ "$dryrun" = "2" ] && ! [ "$clearImageOverride" = "0" ]; then updateIdolTxt imageOverride; fi
    if ! [ -z "$otheridols" ];  then
       if [ "$dryrun" = "0" ]; then idolReposting
       else $iecho "not reposting because --dry-run or --no-post specified"; fi
@@ -316,6 +353,9 @@ if [ -z "$savedPDS" ]; then
    findPDS $did
    if ! [ "$?" = 0 ]; then iberr "PDS lookup failure"; exit 1; fi
 fi
+loadConfig data/$idol/idol.txt
+if [ -z "$idolTxtVersion" ] || [ "$idolTxtVersion" -lt "$internalIdolVer" ]; then refreshTxtCfg; fi
+if [ "$2" = "post-timer" ]; then postTimer; fi
 if [ "$2" = "post" ]; then postingLogic $3; fi
 if [ "$2" = "repost" ]; then repostLogic $3 $4; fi
 if [ -z "$2" ]; then iberr "no operation specified"; exit 1; fi

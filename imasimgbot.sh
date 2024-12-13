@@ -33,7 +33,7 @@ function loginAll () {
 
 function postAll () {
    for i in $(seq 1 $(cat data/idols.txt | wc -l)); do
-      ./idolbot.sh $(cat data/idols.txt | sed -n $i'p') post &
+      ./idolbot.sh $(cat data/idols.txt | sed -n $i'p') post-timer &
       if [ "$(jobs -p | wc -l)" -ge "$(nproc)" ]; then wait -n; fi
    done
    wait
@@ -48,8 +48,7 @@ if [ "$1" = "--uninstall" ]; then installService un; fi
 if [ "$1" = "init-secrets" ]; then loginAll; fi
 if [ "$1" = "--post-now" ]; then postAll; exit 0; fi
 
-# postInterval=3600 # post every hour
-postInterval=7200 # post every 2 hours
+svcInterval=900 # fire every 15 minutes
 
 function napTime () {
    sleeptime=$(($1 - $(date +%s) % $1))
@@ -59,6 +58,6 @@ function napTime () {
 
 while :
 do
-   napTime $postInterval
+   napTime $svcInterval
    postAll
 done
