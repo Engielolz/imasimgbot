@@ -106,7 +106,7 @@ function checkRefresh () {
 
 function repostLogic () {
    $iecho "Going to repost."
-   bap_checkRefresh
+   checkRefresh
    $iecho "Reposting $1 with CID $2"
    bap_repostToBluesky $1 $2
    if [ "$?" != "0" ]; then
@@ -160,7 +160,7 @@ function postIdolPic () {
       rm $bap_preparedImage
       return 0
    fi
-   bap_checkRefresh
+   checkRefresh
    $iecho "uploading image to pds"
    bap_postBlobToPDS $bap_preparedImage $bap_preparedMime
    if [ "$?" != "0" ]; then
@@ -181,7 +181,7 @@ function postIdolPic () {
 }
 
 function postIdolVideo () {
-   bap_checkRefresh
+   checkRefresh
    $iecho "uploading video to pds"
    bap_postBlobToPDS $imagepath "video/mp4"
    if [ "$?" != "0" ]; then
