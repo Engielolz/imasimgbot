@@ -1,5 +1,5 @@
 #!/bin/bash
-internalIdolVer=1
+internalIdolVer=2
 svcInterval=900 # must match postInterval in imasimgbot.sh
 
 function iberr () {
@@ -45,6 +45,9 @@ function refreshTxtCfg () {
    cat >data/$idol/idol.txt <<EOF
 # Version of this file. Don't touch this.
 idolTxtVersion=$internalIdolVer
+
+# Date to run the birthday event (MMDD, always in JST)
+birthday=$birhday
 
 # Post every # runs (default 15 minutes)
 postInterval=$postInterval
@@ -218,7 +221,7 @@ function eventHandler () {
       event=regular
       ;;
    esac
-   if [ "$(TZ=Japan date +%m%d)" = "$birthday" ]; then event=birthday; fi
+   if [ "$(TZ=Asia/Tokyo date +%m%d)" = "$birthday" ]; then event=birthday; fi
    if ! [ -f data/$idol/images/$event.txt ]; then event=regular; fi
 }
 
