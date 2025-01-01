@@ -67,13 +67,13 @@ function updateIdolTxt () {
 
 function login () {
    if [ -z "$2" ]; then iberr "login params not specified"; return 1; fi
-   didInit $1
+   bap_didInit $1
    if ! [ "$?" = "0" ]; then iberr "did init failure"; return 1; fi
-   findPDS $did
+   bap_findPDS $did
    if ! [ "$?" = "0" ]; then iberr "failed to resolve PDS"; return 1; fi
-   getKeys $did $2
+   bap_getKeys $did $2
    if ! [ "$?" = "0" ]; then iberr "failed to log in"; return 1; fi
-   saveSecrets ./data/$idol/secrets.env
+   bap_saveSecrets ./data/$idol/secrets.env
    return 0
 }
 
@@ -81,13 +81,13 @@ function interactiveLogin () {
    read -p "$idol: Handle: " handle
    read -sp "$idol: App Password: " apppassword
    echo
-   didInit $handle
+   bap_didInit $handle
    if ! [ "$?" = "0" ]; then iberr "did init failure"; return 1; fi
-   findPDS $did
+   bap_findPDS $did
    if ! [ "$?" = "0" ]; then iberr "failed to resolve PDS"; return 1; fi
-   getKeys $did $apppassword
+   bap_getKeys $did $apppassword
    if ! [ "$?" = "0" ]; then iberr "failed to log in"; return 1; fi
-   saveSecrets ./data/$idol/secrets.env
+   bap_saveSecrets ./data/$idol/secrets.env
    apppassword=
    return 0
 }
@@ -95,20 +95,20 @@ function interactiveLogin () {
 function checkRefresh () {
    if [ "$(date +%s)" -gt "$(( $savedAccessTimestamp + 5400 ))" ]; then # refresh every 90 minutes
       $iecho "Refreshing tokens"
-      refreshKeys
+      bap_refreshKeys
       if ! [ "$?" = "0" ]; then
          iberr "Refresh error. Exiting."
          exit 1
       fi
-      saveSecrets data/$idol/secrets.env
+      bap_saveSecrets data/$idol/secrets.env
    fi
 }
 
 function repostLogic () {
    $iecho "Going to repost."
-   checkRefresh
+   bap_checkRefresh
    $iecho "Reposting $1 with CID $2"
-   repostToBluesky $1 $2
+   bap_repostToBluesky $1 $2
    if [ "$?" != "0" ]; then
       iberr "Error when trying to repost."
       return 1
@@ -160,9 +160,9 @@ function postIdolPic () {
       rm $bap_preparedImage
       return 0
    fi
-   checkRefresh
+   bap_checkRefresh
    $iecho "uploading image to pds"
-   postBlobToPDS $bap_preparedImage $bap_preparedMime
+   bap_postBlobToPDS $bap_preparedImage $bap_preparedMime
    if [ "$?" != "0" ]; then
       iberr "fatal: blob posting failed!"
       if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
@@ -181,16 +181,16 @@ function postIdolPic () {
 }
 
 function postIdolVideo () {
-   checkRefresh
+   bap_checkRefresh
    $iecho "uploading video to pds"
-   postBlobToPDS $imagepath "video/mp4"
+   bap_postBlobToPDS $imagepath "video/mp4"
    if [ "$?" != "0" ]; then
       iberr "fatal: blob posting failed!"
       return 1
    fi
    # check preparedMime/postedMime and preparedSize/postedSize
    $iecho "posting video"
-   postVideoToBluesky $bap_postedBlob $bap_postedSize "$alt"
+   bap_postVideoToBluesky $bap_postedBlob $bap_postedSize "$alt"
    if [ "$?" != "0" ]; then
       iberr "fatal: video posting failed!"
       return 1
@@ -329,7 +329,7 @@ if ! [ -d ./data/$1 ]; then
 
 idol=$1
 iecho="echo $idol:"
-loadSecrets data/$idol/secrets.env
+bap_loadSecrets data/$idol/secrets.env
 if ! [ "$?" = "0" ]; then
    if ! [ "$2" = "login" ]; then iberr "you need to login first."; exit 1; fi
    if ! [ "$3" = "--interactive" ]; then
@@ -350,7 +350,7 @@ if [ "$2" = "login" ]; then
 fi
 did=$savedDID
 if [ -z "$savedPDS" ]; then
-   findPDS $did
+   bap_findPDS $did
    if ! [ "$?" = 0 ]; then iberr "PDS lookup failure"; exit 1; fi
 fi
 loadConfig data/$idol/idol.txt
