@@ -47,7 +47,7 @@ function refreshTxtCfg () {
 idolTxtVersion=$internalIdolVer
 
 # Date to run the birthday event (MMDD, always in JST)
-birthday=$birhday
+birthday=$birthday
 
 # Post every # runs (default 15 minutes)
 postInterval=$postInterval
