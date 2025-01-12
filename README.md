@@ -1,6 +1,8 @@
 # iM@S Image Bot
 
-This is a bot powered by bash-atproto that posts random images of 765 Production idols.
+This is a bot powered by bash-atproto that can randomly post images to a number of Bluesky accounts.
+
+The main use case is to post random images of 765 Production idols.
 
 **NOTE:** This script will not work properly on macOS due to using `sed -i`.
 
@@ -27,19 +29,21 @@ The other dependencies (like uuidgen) should come with your Linux distro.
 
 ## Setup
 
-Like 765coverbot, this is intended to be ran on an always-on system behind a router. This does not require direct internet access and ideally the server shouldn't have it.
+Like the aforementioned 765coverbot, this is intended to be ran on an always-on system behind a router. This does not require direct internet access and ideally the server shouldn't have it.
 
 The bot can be installed with these commands (as root):
 
 1. Go to `/usr/local/bin` and `git clone` this repository
 
 2. Create the data directory and [its required structure](docs/structure.md).
+   
+   1. You can verify the data structure is correct with the `./imgverify.sh` script.
 
 3. Run the main script with the init-secrets parameter and provide all the individual bots their Bluesky handle and app password:
    
    `./imasimgbot.sh init-secrets`
 
-4. Run `imasimgbot.sh` with the parameter `--install` which will install and enable the bot service
+4. Run `./imasimgbot.sh --install` which will install and enable the bot service
 
 5. Start the bot with `systemctl start imasimgbot`
 

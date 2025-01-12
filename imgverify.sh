@@ -10,6 +10,16 @@ function printerr () {
 "
 }
 
+function loadConfig () {
+   if [[ -f $1 ]]; then while IFS= read -r line; do
+      if [[ $line = \#* ]] || [ -z "$line" ]; then continue; fi
+      declare -g "$line"
+   done < "$1"
+   return 0
+   else return 1
+   fi
+}
+
 source bash-atproto.sh
 if ! [ "$?" = "0" ]; then loadFail; fi
 event=$1
@@ -27,17 +37,17 @@ for i in $(seq 1 $(cat data/idols.txt | wc -l)); do
       image=$(cat data/$idol/images/$event.txt | sed -n $i'p')
       echo Checking entry $image
       imgtype=
-      loadSecrets data/$idol/images/$image/info.txt
+      loadConfig data/$idol/images/$image/info.txt
       if ! [ "$?" = "0" ]; then printerr "no image data"; continue; fi
       if [ -z "$imgtype" ]; then printerr "no imgtype"; continue; fi
       if ! [ -f "data/$idol/images/$image/image.$imgtype" ]; then printerr "no image"; continue; fi
       if [ "$scan" = "1" ] && ! [ "$imgtype" = "mp4" ]; then
-         prepareImageForBluesky "data/$idol/images/$image/image.$imgtype" >/dev/null 2>&1
+         bap_prepareImageForBluesky "data/$idol/images/$image/image.$imgtype" >/dev/null 2>&1
          if [ "$?" != "0" ]; then
             printerr "failed to prep image"
-            if [ -f $preparedImage ]; then rm -f $preparedImage; fi
+            if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
          fi
-         rm -f $preparedImage
+         rm -f $bap_preparedImage
       fi
    done
 done

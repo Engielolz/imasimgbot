@@ -16,6 +16,8 @@
     
     * 📂images
       
+      * 📄 birthday.txt
+      
       * 📄 fools.txt
       
       * 📄 halloween.txt
