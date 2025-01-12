@@ -100,16 +100,18 @@ function checkRefresh () {
       $iecho "Refreshing tokens"
       bap_refreshKeys
       if ! [ "$?" = "0" ]; then
-         iberr "Refresh error. Exiting."
-         exit 1
+         iberr "fatal: refresh error"
+         return 1
       fi
       bap_saveSecrets data/$idol/secrets.env
+      return 0
    fi
 }
 
 function repostLogic () {
    $iecho "Going to repost."
    checkRefresh
+   if [ "$?" != "0" ]; then return 1; fi
    $iecho "Reposting $1 with CID $2"
    bap_repostToBluesky $1 $2
    if [ "$?" != "0" ]; then
@@ -164,6 +166,7 @@ function postIdolPic () {
       return 0
    fi
    checkRefresh
+   if [ "$?" != "0" ]; then rm -f $bap_preparedImage; return 1; fi
    $iecho "uploading image to pds"
    bap_postBlobToPDS $bap_preparedImage $bap_preparedMime
    if [ "$?" != "0" ]; then
@@ -185,6 +188,7 @@ function postIdolPic () {
 
 function postIdolVideo () {
    checkRefresh
+   if [ "$?" != "0" ]; then return 1; fi
    $iecho "uploading video to pds"
    bap_postBlobToPDS $imagepath "video/mp4"
    if [ "$?" != "0" ]; then
