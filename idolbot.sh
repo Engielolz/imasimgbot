@@ -1,5 +1,5 @@
 #!/bin/bash
-internalIdolVer=2
+internalIdolVer=3
 svcInterval=900 # must match postInterval in imasimgbot.sh
 
 function iberr () {
@@ -34,8 +34,7 @@ source ./bash-atproto.sh
 if ! [ "$?" = "0" ]; then loadFail; fi
 
 # Check params
-if [ -z "$1" ]; then showHelp badParam; exit 1; fi
-if [ "$1" = "--help" ]; then showHelp; exit 0; fi
+if [ -z "$1" ] || [ "$1" = "--help" ]; then showHelp; exit 1; fi
 
 function refreshTxtCfg () {
    $iecho "updating idol.txt to new version"
@@ -54,6 +53,8 @@ postInterval=$postInterval
 globalQueueSize=$globalQueueSize
 # Date to run the birthday event (MMDD, always in JST)
 birthday=$birthday
+# If 1, post video via Bluesky instead of to PDS
+directVideoPosting=0
 
 # Enter the name of an image to post it instead of picking
 imageOverride=$imageOverride
@@ -129,7 +130,7 @@ function pickImage () {
 
 function incrementRecents () {
    if ! [ -s $1 ]; then echo "" > $1; fi
-   sed -i "1s/^/$image\n/" $1
+   if [ "$2" = "--subimage" ]; then sed -i "1s/^/$subimage\n/" $1; else sed -i "1s/^/$image\n/" $1; fi
    return 0
 }
 
@@ -187,8 +188,9 @@ function postIdolPic () {
 function postIdolVideo () {
    checkRefresh
    if [ "$?" != "0" ]; then return 1; fi
+   if [ "$directVideoPosting" = "1" ]; then videoUploadCMD=bap_prepareVideoForBluesky; else videoUploadCMD=bap_postBlobToPDS; fi
    $iecho "uploading video to pds"
-   bap_postBlobToPDS $imagepath "video/mp4"
+   $videoUploadCMD $imagepath "video/mp4"
    if [ "$?" != "0" ]; then
       iberr "fatal: video upload failed!"
       return 1
@@ -244,14 +246,35 @@ function checkImage () {
    $iecho "picked entry $image"
 }
 
+function iterateSubentries () {
+   images=$(grep -xvf data/$idol/images/$image/subentry-recents.txt data/$idol/images/$image/subentries.txt)
+   if [ -z "$images" ]; then
+      $iecho "resetting subentry recents queue for $image"
+      echo > data/$idol/images/$image/subentry-recents.txt
+      images=$(grep -xvf data/$idol/images/$image/subentry-recents.txt data/$idol/images/$image/subentries.txt)
+   fi
+   if [ -z "$images" ]; then iberr "error: no valid image subentries"; return 1; fi
+   subimage=$(pickImage $(echo "$images" | wc -l))
+   $iecho "picked subentry $subimage"
+}
+
 function loadImage () {
+   # clean in case there's been failures
+   imgtype= alt= otheridols= subentries= subimage=
    loadConfig data/$idol/images/$image/info.txt
    if ! [ "$?" = "0" ]; then
-      echo iberr "fatal: the entry data for $image is missing"
-      echo iberr "hint: if the above line is broken, it may be encoded in windows format"
+      iberr "fatal: the entry data for $image is missing"
+      iberr "hint: if the above line is broken, it may be encoded in windows format"
       return 1
    fi
-   imagepath=data/$idol/images/$image/image.$imgtype
+   if [ "$subentries" = "1" ]; then
+      iterateSubentries
+      loadConfig data/$idol/images/$image/$subimage/info.txt
+      if ! [ "$?" = 0 ]; then iberr "error reading data for $subimage"; return 1; fi
+      imagepath=data/$idol/images/$image/$subimage/image.$imgtype
+   else
+      imagepath=data/$idol/images/$image/image.$imgtype
+   fi
    if ! [ -f $imagepath ]; then iberr "fatal: image $imagepath does not exist"; return 1; fi
    $iecho "location: $imagepath"
    $iecho "alt text: $alt"
@@ -320,6 +343,7 @@ function postingLogic () {
       $iecho "adding image to recents"
       incrementGlobalRecents
       if [ -z "$imageOverride" ]; then incrementRecents data/$idol/$event-recents.txt; fi
+      if [ "$subentries" = "1" ]; then incrementRecents data/$idol/images/$image/subentry-recents.txt --subimage; fi
    fi
    if ! [ -z "$imageOverride" ] && ! [ "$dryrun" = "2" ] && ! [ "$clearImageOverride" = "0" ]; then updateIdolTxt imageOverride; fi
    if ! [ -z "$otheridols" ];  then
