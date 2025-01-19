@@ -45,17 +45,15 @@ function refreshTxtCfg () {
    cat >data/$idol/idol.txt <<EOF
 # Version of this file. Don't touch this.
 idolTxtVersion=$internalIdolVer
-
-# Date to run the birthday event (MMDD, always in JST)
-birthday=$birthday
+# Unix timestamp for next post. Don't touch this either.
+nextPostTime=$nextPostTime
 
 # Post every # runs (default 15 minutes)
 postInterval=$postInterval
-# The unix timestamp when it should post next
-nextPostTime=$nextPostTime
-
 # The # latest used images will not be posted. Set to 0 to disable
 globalQueueSize=$globalQueueSize
+# Date to run the birthday event (MMDD, always in JST)
+birthday=$birthday
 
 # Enter the name of an image to post it instead of picking
 imageOverride=$imageOverride
@@ -192,12 +190,12 @@ function postIdolVideo () {
    $iecho "uploading video to pds"
    bap_postBlobToPDS $imagepath "video/mp4"
    if [ "$?" != "0" ]; then
-      iberr "fatal: blob posting failed!"
+      iberr "fatal: video upload failed!"
       return 1
    fi
    # check preparedMime/postedMime and preparedSize/postedSize
    $iecho "posting video"
-   bap_postVideoToBluesky $bap_postedBlob $bap_postedSize "$alt"
+   bap_postVideoToBluesky $bap_postedBlob $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt"
    if [ "$?" != "0" ]; then
       iberr "fatal: video posting failed!"
       return 1

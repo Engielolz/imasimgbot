@@ -98,7 +98,7 @@ function bap_postToBluesky () { #1: exception 2: refresh required
 }
 
 function bap_repostToBluesky () { # arguments 1 is uri, 2 is cid. error codes same as postToBluesky
-   if [ -z "$1" ] || [ -z "$2" ]; then baperr "fatal: Required argument missing"; return 1; fi
+   if [ -z "$2" ]; then baperr "fatal: Required argument missing"; return 1; fi
    bap_result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.repost\", \"repo\": \"$did\", \"record\": { \"subject\": { \"uri\": \"$1\", \"cid\": \"$2\" }, \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.repost\" } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
    error=$?
    if [ "$error" != "0" ]; then
@@ -159,7 +159,7 @@ function bap_postBlobToPDS () {
 # okay, params are:
 # $1 is the file name and path
 # $2 is the mime type
-   if [ -z "$1" ] || [ -z "$2" ]; then baperr "fatal: Required argument missing"; return 1; fi
+   if [ -z "$2" ]; then baperr "fatal: Required argument missing"; return 1; fi
    bap_result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H "Content-Type: $2" --data-binary @"$1" "$savedPDS/xrpc/com.atproto.repo.uploadBlob")
    error=$?
    if [ "$error" != "0" ]; then
@@ -204,14 +204,31 @@ function bap_postImageToBluesky () { #1: exception 2: refresh required
    return 0
 }
 
+function bap_prepareVideoForBluesky () {
+   # stub, will actually talk to bluesky video service in the future
+   # $1 is file
+   # $2 is mime (like bap_postBlobToPDS)
+   if [ -z "$2" ]; then baperr "fatal: Required argument missing"; return 1; fi
+   if [[ $(stat -c %s $1) -gt 50000000 ]]; then baperr 'fatal: video may not exceed 50 mb'; return 1; fi
+   bap_postBlobToPDS $1 $2
+   if [ "$?" != "0" ]; then baperr "warning: video upload failed"; return 1; fi
+   bap_imageWidth=$(exiftool -ImageWidth -s3 $1)
+   bap_imageHeight=$(exiftool -ImageHeight -s3 $1)
+   $bapecho 'video "posted"'
+   return 0
+}
+
 function bap_postVideoToBluesky () {
 # param:
 # 1 - blob
 # 2 - size
-# 3 - alt text
-# 4 - text
+# 3 - width
+# 4 - height
+# 5 - alt text
+# 6 - text
+# assuming video/mp4 is always the mimetype might be a bad assumption
    if [ -z "$2" ]; then baperr "fatal: more arguments required"; return 1; fi
-   result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$did\", \"record\": { \"text\": \"$4\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"alt\": \"$3\", \"\$type\": \"app.bsky.embed.video\", \"video\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"video/mp4\", \"size\": $2 } } } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
+   result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$did\", \"record\": { \"text\": \"$6\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"alt\": \"$5\", \"\$type\": \"app.bsky.embed.video\", \"video\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"video/mp4\", \"size\": $2 } \"aspectRatio\": { \"width\": $3, \"height\": $4 } } } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
    error=$?
    if [ "$error" != "0" ]; then
       baperr 'warning: the post failed.'
