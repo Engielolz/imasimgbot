@@ -228,7 +228,7 @@ function bap_postVideoToBluesky () {
 # 6 - text
 # assuming video/mp4 is always the mimetype might be a bad assumption
    if [ -z "$2" ]; then baperr "fatal: more arguments required"; return 1; fi
-   result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$did\", \"record\": { \"text\": \"$6\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"alt\": \"$5\", \"\$type\": \"app.bsky.embed.video\", \"video\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"video/mp4\", \"size\": $2 } \"aspectRatio\": { \"width\": $3, \"height\": $4 } } } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
+   bap_result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$did\", \"record\": { \"text\": \"$6\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"alt\": \"$5\", \"\$type\": \"app.bsky.embed.video\", \"video\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"video/mp4\", \"size\": $2 }, \"aspectRatio\": { \"width\": $3, \"height\": $4 } } } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
    error=$?
    if [ "$error" != "0" ]; then
       baperr 'warning: the post failed.'
