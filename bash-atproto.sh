@@ -1,6 +1,10 @@
 #!/bin/bash
 
-# $1 must be our DID of the account
+# you can change these
+bap_plcDirectory=https://plc.directory
+bap_handleResolveURL=https://public.api.bsky.app
+
+# but don't touch these
 bapecho="echo bash-atproto:"
 did_regex="^did:[a-z]+:[a-zA-Z0-9._:%-]*[a-zA-Z0-9._-]$"
 
@@ -81,7 +85,7 @@ function bap_refreshKeys () {
 
 function bap_postToBluesky () { #1: exception 2: refresh required
    if [ -z "$1" ]; then baperr "fatal: No argument given to post"; return 1; fi
-   bap_result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$did\", \"record\": { \"text\": \"$1\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"langs\": [ \"en-US\" ] } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
+   bap_result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$savedDID\", \"record\": { \"text\": \"$1\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"langs\": [ \"en-US\" ] } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
    error=$?
    if [ "$error" != "0" ]; then
       baperr 'warning: the post failed.'
@@ -99,7 +103,7 @@ function bap_postToBluesky () { #1: exception 2: refresh required
 
 function bap_repostToBluesky () { # arguments 1 is uri, 2 is cid. error codes same as postToBluesky
    if [ -z "$2" ]; then baperr "fatal: Required argument missing"; return 1; fi
-   bap_result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.repost\", \"repo\": \"$did\", \"record\": { \"subject\": { \"uri\": \"$1\", \"cid\": \"$2\" }, \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.repost\" } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
+   bap_result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.repost\", \"repo\": \"$savedDID\", \"record\": { \"subject\": { \"uri\": \"$1\", \"cid\": \"$2\" }, \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.repost\" } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
    error=$?
    if [ "$error" != "0" ]; then
       baperr 'warning: repost failed.'
@@ -188,7 +192,7 @@ function bap_postImageToBluesky () { #1: exception 2: refresh required
 # 7 - text
    if [ -z "$5" ]; then baperr "fatal: more arguments required"; return 1; fi
    # there is a disturbing lack of error checking
-   bap_result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$did\", \"record\": { \"text\": \"$7\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"\$type\": \"app.bsky.embed.images\", \"images\": [ { \"alt\": \"$6\", \"aspectRatio\": { \"height\": $5, \"width\": $4 }, \"image\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"$2\", \"size\": $3 } } ] } } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
+   bap_result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$savedDID\", \"record\": { \"text\": \"$7\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"\$type\": \"app.bsky.embed.images\", \"images\": [ { \"alt\": \"$6\", \"aspectRatio\": { \"height\": $5, \"width\": $4 }, \"image\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"$2\", \"size\": $3 } } ] } } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
    error=$?
    if [ "$error" != "0" ]; then
       baperr 'warning: the post failed.'
@@ -228,7 +232,7 @@ function bap_postVideoToBluesky () {
 # 6 - text
 # assuming video/mp4 is always the mimetype might be a bad assumption
    if [ -z "$4" ]; then baperr "fatal: more arguments required"; return 1; fi
-   bap_result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$did\", \"record\": { \"text\": \"$6\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"alt\": \"$5\", \"\$type\": \"app.bsky.embed.video\", \"video\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"video/mp4\", \"size\": $2 }, \"aspectRatio\": { \"width\": $3, \"height\": $4 } } } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
+   bap_result=$(curl --fail-with-body -s -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$savedDID\", \"record\": { \"text\": \"$6\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"alt\": \"$5\", \"\$type\": \"app.bsky.embed.video\", \"video\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"video/mp4\", \"size\": $2 }, \"aspectRatio\": { \"width\": $3, \"height\": $4 } } } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
    error=$?
    if [ "$error" != "0" ]; then
       baperr 'warning: the post failed.'
@@ -251,12 +255,12 @@ function bap_findPDS () {
    case "$bap_didType" in
 
       "1")
-      bap_resolve=$(curl -s --fail-with-body "https://plc.directory/$1" | jq -r .service)
+      bap_resolve=$(curl -s --fail-with-body "$bap_plcDirectory/$1" | jq -r .service)
       if ! [ "$?" = "0" ]; then echo "failed did:plc lookup"; return 1; fi
       ;;
 
       "2")
-      bap_resolve=$(curl -s --fail-with-body "$(echo $1 | sed 's/did:web://g')/.well-known/did.json" | jq -r .service)
+      bap_resolve=$(curl -s --fail-with-body "$(echo https://$1 | sed 's/did:web://g')/.well-known/did.json" | jq -r .service)
       if ! [ "$?" = "0" ]; then echo "failed did:web lookup"; return 1; fi
       ;;
 
@@ -281,31 +285,19 @@ function bap_findPDS () {
 function bap_didInit () {
 skipDIDFetch=0
 
-if ! [ -z "$savedDID" ]; then
-   skipDIDFetch=1
-   did=$savedDID
-   $bapecho "Using cached DID: $did"
-fi
-
-
 if [[ "$skipDIDFetch" = "0" ]] && [[ "$1" =~ $did_regex ]] ; then
    skipDIDFetch=1
-   did=$1
-   $bapecho "Using user-specified DID: $did"
+   savedDID=$1
+   $bapecho "Using user-specified DID: $savedDID"
 fi
 if [ "$skipDIDFetch" = "0" ]; then
-   $bapecho 'DID not specified. Fetching from ATproto API'
-   did=$(curl -s -G --data-urlencode "handle=$1" "https://bsky.social/xrpc/com.atproto.identity.resolveHandle" | jq -r .did)
-   if ! [[ "$did" =~ $did_regex ]]; then
+   $bapecho "DID not specified. Fetching from $bap_handleResolveURL"
+   savedDID=$(curl -s -G --data-urlencode "handle=$1" "$bap_handleResolveURL/xrpc/com.atproto.identity.resolveHandle" | jq -r .did)
+   if ! [[ "$savedDID" =~ $did_regex ]]; then
       baperr "Error obtaining DID from API"
       return 1
    fi
-   $bapecho "Using DID from API: $did"
+   $bapecho "Using DID from API: $savedDID"
 fi
-#if [ -z "$savedPDS" ]; then savedPDS=$3; fi
-#if [ -z "$savedPDS" ]; then
-#   findPDS $did
-#   return $?
-#fi
 return 0
 }

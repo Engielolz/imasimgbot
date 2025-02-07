@@ -71,9 +71,9 @@ function login () {
    if [ -z "$2" ]; then iberr "login params not specified"; return 1; fi
    bap_didInit $1
    if ! [ "$?" = "0" ]; then iberr "did init failure"; return 1; fi
-   bap_findPDS $did
+   bap_findPDS $savedDID
    if ! [ "$?" = "0" ]; then iberr "failed to resolve PDS"; return 1; fi
-   bap_getKeys $did $2
+   bap_getKeys $savedDID $2
    if ! [ "$?" = "0" ]; then iberr "failed to log in"; return 1; fi
    bap_saveSecrets ./data/$idol/secrets.env
    return 0
@@ -85,9 +85,9 @@ function interactiveLogin () {
    echo
    bap_didInit $handle
    if ! [ "$?" = "0" ]; then iberr "did init failure"; return 1; fi
-   bap_findPDS $did
+   bap_findPDS $savedDID
    if ! [ "$?" = "0" ]; then iberr "failed to resolve PDS"; return 1; fi
-   bap_getKeys $did $apppassword
+   bap_getKeys $savedDID $apppassword
    if ! [ "$?" = "0" ]; then iberr "failed to log in"; return 1; fi
    bap_saveSecrets ./data/$idol/secrets.env
    apppassword=
@@ -377,9 +377,9 @@ if [ "$2" = "login" ]; then
       exit 2
    fi
 fi
-did=$savedDID
+
 if [ -z "$savedPDS" ]; then
-   bap_findPDS $did
+   bap_findPDS $savedDID
    if ! [ "$?" = 0 ]; then iberr "PDS lookup failure"; exit 1; fi
 fi
 loadConfig data/$idol/idol.txt
