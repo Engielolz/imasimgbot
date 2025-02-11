@@ -14,9 +14,13 @@ function loadFail () {
 function showHelp () {
    echo "usage: ./idolbot.sh <idol> <command>"
    echo "commands:"
-   echo "login - specify a did/handle and app-password to generate secrets"
-   echo "post - normal behavior to post an image"
-   echo "repost - repost another idol bot's post"
+   echo "login      - specify a did/handle and app-password to generate secrets"
+   echo "             use --interactive instead of creds to log in interactively"
+   echo "post       - normal behavior to post an image"
+   echo "             append --dry-run to not do anything"
+   echo "             append --no-post to not (re)post but still modify recent queues"
+   echo "repost     - repost another idol bot's post (specify uri and cid)"
+   echo "post-timer - post depending on the last post time (not meant for manual use)"
 }
 
 function loadConfig () {
@@ -188,7 +192,14 @@ function postIdolPic () {
 function postIdolVideo () {
    checkRefresh
    if [ "$?" != "0" ]; then return 1; fi
-   if [ "$directVideoPosting" = "1" ]; then videoUploadCMD=bap_prepareVideoForBluesky; else videoUploadCMD=bap_postBlobToPDS; fi
+   if [ "$directVideoPosting" = "1" ]; then videoUploadCMD=bap_prepareVideoForBluesky; else
+      if [[ $(stat -c %s $1) -gt 50000000 ]]; then iberr 'fatal: video may not exceed 50 mb'; return 1; fi
+      videoUploadCMD=bap_postBlobToPDS
+      bap_imageWidth=$(exiftool -ImageWidth -s3 $imagepath)
+      if ! [ "$?" = "0" ]; then iberr "fatal: exiftool failed!"; return 1; fi
+      bap_imageHeight=$(exiftool -ImageHeight -s3 $imagepath)
+      if ! [ "$?" = "0" ]; then iberr "fatal: exiftool failed!"; return 1; fi
+   fi
    $iecho "uploading video to pds"
    $videoUploadCMD $imagepath "video/mp4"
    if [ "$?" != "0" ]; then
