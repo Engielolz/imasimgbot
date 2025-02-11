@@ -249,27 +249,32 @@ function bap_postVideoToBluesky () {
 }
 
 function bap_findPDS () {
+   if [ -z "$1" ]; then baperr "fatal: no did specified"; return 1; fi
    bap_didType=0
-   if ! [ -z "$(echo $1 | grep did:plc:)" ]; then bap_didType=1; fi
-   if ! [ -z "$(echo $1 | grep did:web:)" ]; then bap_didType=2; fi
+   if ! [ -z "$(echo $1 | grep did:plc:)" ]; then bap_didType=plc; fi
+   if ! [ -z "$(echo $1 | grep did:web:)" ]; then bap_didType=web; fi
    case "$bap_didType" in
 
-      "1")
-      bap_resolve=$(curl -s --fail-with-body "$bap_plcDirectory/$1" | jq -r .service)
-      if ! [ "$?" = "0" ]; then echo "failed did:plc lookup"; return 1; fi
+      "plc")
+      bap_resolve=$(curl -s --fail-with-body "$bap_plcDirectory/$1")
+      error=$?
+      if ! [ "$error" = "0" ]; then baperr "fatal: did:plc lookup failed"; bapInternal_processCurlError bap_findPDS; return 1; fi
       ;;
 
-      "2")
-      bap_resolve=$(curl -s --fail-with-body "$(echo https://$1 | sed 's/did:web://g')/.well-known/did.json" | jq -r .service)
-      if ! [ "$?" = "0" ]; then echo "failed did:web lookup"; return 1; fi
+      "web")
+      bap_resolve=$(curl -s --fail-with-body "$(echo https://$1 | sed 's/did:web://g')/.well-known/did.json")
+      error=$?
+      if ! [ "$error" = "0" ]; then baperr "fatal: did:web lookup failed"; bapInternal_processCurlError bap_findPDS; return 1; fi
       ;;
 
       *)
-      baperr "unrecognized did type"
+      baperr "fatal: unrecognized did type"
       return 1
       ;;
    esac
-   set iter=0
+   bap_resolve=$(echo $bap_resolve | jq -r .service)
+   if ! [ "$?" = "0" ]; then baperr "fatal: failed to parse DID document"; return 1; fi
+   iter=0
    while read -r id; do
       if ! [ "$id" = "#atproto_pds" ]; then
          ((iter+=1))
@@ -278,7 +283,7 @@ function bap_findPDS () {
       savedPDS=$(echo "$bap_resolve" | jq -r ".[$iter].serviceEndpoint")
       break
    done <<< "$(echo "$bap_resolve" | jq -r .[].id)"
-   if [ -z "$savedPDS" ]; then echo "failure finding PDS"; return 1; fi
+   if [ -z "$savedPDS" ]; then baperr "fatal: PDS not found in DID document"; return 1; fi
    return 0
 }
 
