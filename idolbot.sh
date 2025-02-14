@@ -177,8 +177,8 @@ function saveToImageCache () {
    if [ "$subentries" = "1" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
    if [ -f "$cachePath/cache.txt" ] && [ "$1" != "--force" ]; then return 0; fi # already cached
    mkdir -p $cachePath
-   echo "orighash=$(sha256sum $imagepath) | awk '{print $1}'" > $cachePath/cache.txt
-   echo "cachehash=$(sha256sum $bap_preparedImage) | awk '{print $1}'" >> $cachePath/cache.txt
+   echo "orighash=$(sha256sum $imagepath | awk '{print $1}')" > $cachePath/cache.txt
+   echo "cachehash=$(sha256sum $bap_preparedImage | awk '{print $1}')" >> $cachePath/cache.txt
    echo "cacheimgtype=${bap_preparedImage##*.}" >> $cachePath/cache.txt
    echo "cachemime=$bap_postedMime" >> $cachePath/cache.txt
    echo "cachesize=$bap_postedSize" >> $cachePath/cache.txt
