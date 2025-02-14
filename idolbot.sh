@@ -173,6 +173,20 @@ function fetchImageCache () {
    return 0
 }
 
+function loadCachedImage () {
+   # expects fetchImageCache to be run beforehand
+   # for bap_postBlobToPDS
+   bap_preparedImage=/tmp/bash-atproto/$(uuidgen).$cacheimgtype
+   cp $cachePath/cache.$cacheimgtype $bap_preparedImage
+   bap_preparedMime=$cachemime
+   # for bap_postImageToBluesky
+   bap_postedMime=$cachemime
+   bap_postedBlob=$bloblink
+   bap_postedSize=$cachesize
+   bap_imageWidth=$cachewidth
+   bap_imageHeight=$cacheheight
+}
+
 function saveToImageCache () {
    if [ "$subentries" = "1" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
    if [ -f "$cachePath/cache.txt" ] && [ "$1" != "--force" ]; then return 0; fi # already cached
@@ -189,12 +203,19 @@ function saveToImageCache () {
 }
 
 function postIdolPic () {
-   $iecho "preparing image"
-   bap_prepareImageForBluesky $imagepath
-   if [ "$?" != "0" ]; then
-      iberr "fatal: image prep failed!"
-      if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
-      return 1
+   imageCaching=0
+   if [ "$imageCacheStrategy" -ge "1" ]; then
+      fetchImageCache
+      if [ "$?" != "0" ]; then rm -r $cachePath; else imageCaching=1; loadCachedImage; fi
+   fi
+   if [ "$imageCaching" = "0" ]; then
+      $iecho "preparing image"
+      bap_prepareImageForBluesky $imagepath
+      if [ "$?" != "0" ]; then
+         iberr "fatal: image prep failed!"
+         if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
+         return 1
+      fi
    fi
    if ! [ "$dryrun" = "0" ]; then
       $iecho "skipping post because --dry-run or --no-post specified"
@@ -203,16 +224,18 @@ function postIdolPic () {
    fi
    checkRefresh
    if [ "$?" != "0" ]; then rm -f $bap_preparedImage; return 1; fi
-   $iecho "uploading image to pds"
-   bap_postBlobToPDS $bap_preparedImage $bap_preparedMime
-   if [ "$?" != "0" ]; then
-      iberr "fatal: blob posting failed!"
-      if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
-      return 1
+   if [ "$imageCacheStrategy" != "2" ] || [ ! -z "$bloblink" ]; then
+      $iecho "uploading image to pds"
+      bap_postBlobToPDS $bap_preparedImage $bap_preparedMime
+      if [ "$?" != "0" ]; then
+         iberr "fatal: blob posting failed!"
+         if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
+         return 1
+      fi
+      if [ "$imageCacheStrategy" != "0" ]; then saveToImageCache; fi
+      rm $bap_preparedImage
+      # check preparedMime/postedMime and preparedSize/postedSize
    fi
-   if [ "$imageCacheStrategy" != "0" ]; then saveToImageCache; fi
-   rm $bap_preparedImage
-   # check preparedMime/postedMime and preparedSize/postedSize
    $iecho "posting image"
    bap_postImageToBluesky $bap_postedBlob $bap_postedMime $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt"
    if [ "$?" != "0" ]; then
