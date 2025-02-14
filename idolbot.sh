@@ -1,5 +1,5 @@
 #!/bin/bash
-internalIdolVer=3
+internalIdolVer=4
 svcInterval=900 # must match postInterval in imasimgbot.sh
 
 function iberr () {
@@ -43,27 +43,34 @@ if [ -z "$1" ] || [ "$1" = "--help" ]; then showHelp; exit 1; fi
 function refreshTxtCfg () {
    $iecho "updating idol.txt to new version"
    if [ -z "$postInterval" ]; then postInterval=4; fi
-   if [ -z "$globalQueueSize" ]; then globalQueueSize=24; fi
+   if [ -z "$globalQueueSize" ]; then globalQueueSize=48; fi
    if [ -z "$clearImageOverride" ]; then clearImageOverride=1; fi
+   if [ -z "$directVideoPosting" ]; then directVideoPosting=0; fi
+   if [ -z "$imageCacheStrategy" ]; then imageCacheStrategy=0; fi
+   if [ -z "$imageCacheLocation" ]; then imageCacheLocation=./data/$idol/cache; fi
    cat >data/$idol/idol.txt <<EOF
 # Version of this file. Don't touch this.
 idolTxtVersion=$internalIdolVer
 # Unix timestamp for next post. Don't touch this either.
 nextPostTime=$nextPostTime
 
-# Post every # runs (default 15 minutes)
-postInterval=$postInterval
-# The # latest used images will not be posted. Set to 0 to disable
-globalQueueSize=$globalQueueSize
-# Date to run the birthday event (MMDD, always in JST)
-birthday=$birthday
-# If 1, post video via Bluesky instead of to PDS
-directVideoPosting=0
-
-# Enter the name of an image to post it instead of picking
+# Enter the name of an entry to post it instead of picking
 imageOverride=$imageOverride
 # Set this to 0 to always post the override (otherwise it's posted only once)
 clearImageOverride=$clearImageOverride
+
+# Date to run the birthday event (MMDD, always in JST)
+birthday=$birthday
+# Post every # runs (one run is by default 15 minutes)
+postInterval=$postInterval
+# The # latest used images will not be posted. Set to 0 to disable
+globalQueueSize=$globalQueueSize
+# If 1, post video via Bluesky instead of to PDS
+directVideoPosting=$directVideoPosting
+# Set to 1 to use image caching or blob IDs with 2. Set to 0 to disable
+imageCacheStrategy=$imageCacheStrategy
+# Location of the image cache if enabled
+imageCacheLocation=$imageCacheLocation
 EOF
 }
 
@@ -155,6 +162,32 @@ function idolReposting () {
    return 0
 }
 
+function fetchImageCache () {
+   if [ "$subentries" = "1" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
+   if [ -z "$cachePath/cache.txt" ]; then return 1; fi
+   loadConfig $cachePath/cache.txt
+   if [ -z "$cachePath/cache.$cacheimgtype" ]; then iberr "cached image not found"; return 2; fi
+   if [ "$cachehash" != "$(sha256sum $cachePath/cache.$cacheimgtype) | awk '{print $1}'" ]; then iberr "hash does not match cached image"; return 2; fi
+   if [ "$orighash" != "$(sha256sum $imagepath) | awk '{print $1}'" ]; then iberr "hash does not match the image originally cached"; return 2; fi
+   imagepath=$cachePath/cache.$cacheimgtype
+   return 0
+}
+
+function saveToImageCache () {
+   if [ "$subentries" = "1" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
+   if [ -f "$cachePath/cache.txt" ] && [ "$1" != "--force" ]; then return 0; # already cached
+   mkdir $cachePath 2> /dev/null
+   echo "orighash=$(sha256sum $imagepath) | awk '{print $1}'" > $cachePath/cache.txt
+   echo "cachehash=$(sha256sum $bap_preparedImage) | awk '{print $1}'" >> $cachePath/cache.txt
+   echo "cacheimgtype=${bap_preparedImage##*.}" >> $cachePath/cache.txt
+   echo "cachemime=$bap_postedMime" >> $cachePath/cache.txt
+   echo "cachesize=$bap_postedSize" >> $cachePath/cache.txt
+   echo "cachewidth=$bap_imageWidth" >> $cachePath/cache.txt
+   echo "cacheheight=$bap_imageHeight" >> $cachePath/cache.txt
+   echo "bloblink=$bap_postedBlob" >> $cachePath/cache.txt
+   cp -f $bap_preparedImage $cachePath/cache.${bap_preparedImage##*.}
+}
+
 function postIdolPic () {
    $iecho "preparing image"
    bap_prepareImageForBluesky $imagepath
@@ -177,6 +210,7 @@ function postIdolPic () {
       if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
       return 1
    fi
+   if [ "$imageCacheStrategy" != "0" ]; then saveToImageCache; fi
    rm $bap_preparedImage
    # check preparedMime/postedMime and preparedSize/postedSize
    $iecho "posting image"
@@ -186,6 +220,7 @@ function postIdolPic () {
       return 1
    fi
    $iecho "image upload SUCCESS"
+   if [ "$imageCacheStrategy" != "0" ] && [ -z "$bloblink" ]; then saveToImageCache --force; fi
    return 0
 }
 
