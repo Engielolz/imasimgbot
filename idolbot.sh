@@ -176,7 +176,7 @@ function fetchImageCache () {
 function saveToImageCache () {
    if [ "$subentries" = "1" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
    if [ -f "$cachePath/cache.txt" ] && [ "$1" != "--force" ]; then return 0; fi # already cached
-   mkdir $cachePath 2> /dev/null
+   mkdir -p $cachePath
    echo "orighash=$(sha256sum $imagepath) | awk '{print $1}'" > $cachePath/cache.txt
    echo "cachehash=$(sha256sum $bap_preparedImage) | awk '{print $1}'" >> $cachePath/cache.txt
    echo "cacheimgtype=${bap_preparedImage##*.}" >> $cachePath/cache.txt
@@ -220,7 +220,7 @@ function postIdolPic () {
       return 1
    fi
    $iecho "image upload SUCCESS"
-   if [ "$imageCacheStrategy" != "0" ] && [ -z "$bloblink" ]; then saveToImageCache --force; fi
+   if [ "$imageCacheStrategy" != "0" ] && [ -z "$bloblink" ]; then -i "s/bloblink=/bloblink=$bap_postedBlob/g" $imageCacheLocation/cache.txt; fi
    return 0
 }
 
