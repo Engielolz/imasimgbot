@@ -200,13 +200,21 @@ function saveToImageCache () {
    echo "cacheheight=$bap_imageHeight" >> $cachePath/cache.txt
    echo "bloblink=$bap_postedBlob" >> $cachePath/cache.txt
    cp -f $bap_preparedImage $cachePath/cache.${bap_preparedImage##*.}
+   bloblink=$bap_postedBlob # don't run sed after image upload
 }
 
 function postIdolPic () {
    imageCaching=0
    if [ "$imageCacheStrategy" -ge "1" ]; then
       fetchImageCache
-      if [ "$?" != "0" ]; then iberr "cached image data invalid, purging"; rm -r $cachePath; else imageCaching=1; loadCachedImage; fi
+      case $? in
+         0)
+         imageCaching=1
+         loadCachedImage;;
+         2)
+         iberr "cached image data invalid, purging"
+         rm -r $cachePath;;
+      esac
    fi
    if [ "$imageCaching" = "0" ]; then
       $iecho "preparing image"
