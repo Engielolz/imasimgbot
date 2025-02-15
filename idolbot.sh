@@ -164,9 +164,9 @@ function idolReposting () {
 
 function fetchImageCache () {
    if [ "$subentries" = "1" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
-   if [ -z "$cachePath/cache.txt" ]; then return 1; fi
+   if [ ! -f "$cachePath/cache.txt" ]; then return 1; fi
    loadConfig $cachePath/cache.txt
-   if [ -z "$cachePath/cache.$cacheimgtype" ]; then iberr "cached image not found"; return 2; fi
+   if [ ! -f "$cachePath/cache.$cacheimgtype" ]; then iberr "cached image not found"; return 2; fi
    if [ "$cachehash" != "$(sha256sum $cachePath/cache.$cacheimgtype | awk '{print $1}')" ]; then iberr "hash does not match cached image"; return 2; fi
    if [ "$orighash" != "$(sha256sum $imagepath | awk '{print $1}')" ]; then iberr "hash does not match the image originally cached"; return 2; fi
    imagepath=$cachePath/cache.$cacheimgtype
