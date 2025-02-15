@@ -206,7 +206,7 @@ function postIdolPic () {
    imageCaching=0
    if [ "$imageCacheStrategy" -ge "1" ]; then
       fetchImageCache
-      if [ "$?" != "0" ]; then rm -r $cachePath; else imageCaching=1; loadCachedImage; fi
+      if [ "$?" != "0" ]; then iberr "cached image data invalid, purging"; rm -r $cachePath; else imageCaching=1; loadCachedImage; fi
    fi
    if [ "$imageCaching" = "0" ]; then
       $iecho "preparing image"
