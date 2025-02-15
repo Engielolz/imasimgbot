@@ -167,8 +167,8 @@ function fetchImageCache () {
    if [ -z "$cachePath/cache.txt" ]; then return 1; fi
    loadConfig $cachePath/cache.txt
    if [ -z "$cachePath/cache.$cacheimgtype" ]; then iberr "cached image not found"; return 2; fi
-   if [ "$cachehash" != "$(sha256sum $cachePath/cache.$cacheimgtype) | awk '{print $1}'" ]; then iberr "hash does not match cached image"; return 2; fi
-   if [ "$orighash" != "$(sha256sum $imagepath) | awk '{print $1}'" ]; then iberr "hash does not match the image originally cached"; return 2; fi
+   if [ "$cachehash" != "$(sha256sum $cachePath/cache.$cacheimgtype | awk '{print $1}')" ]; then iberr "hash does not match cached image"; return 2; fi
+   if [ "$orighash" != "$(sha256sum $imagepath | awk '{print $1}')" ]; then iberr "hash does not match the image originally cached"; return 2; fi
    imagepath=$cachePath/cache.$cacheimgtype
    return 0
 }
@@ -243,7 +243,7 @@ function postIdolPic () {
       return 1
    fi
    $iecho "image upload SUCCESS"
-   if [ "$imageCacheStrategy" != "0" ] && [ -z "$bloblink" ]; then -i "s/bloblink=/bloblink=$bap_postedBlob/g" $imageCacheLocation/cache.txt; fi
+   if [ "$imageCacheStrategy" != "0" ] && [ -z "$bloblink" ]; then sed -i "s/bloblink=/bloblink=$bap_postedBlob/g" $imageCacheLocation/cache.txt; fi
    return 0
 }
 
