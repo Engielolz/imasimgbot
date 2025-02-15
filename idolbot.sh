@@ -210,7 +210,8 @@ function postIdolPic () {
       case $? in
          0)
          imageCaching=1
-         loadCachedImage;;
+         loadCachedImage
+         $iecho "using cached image";;
          2)
          iberr "cached image data invalid, purging"
          rm -r $cachePath;;
