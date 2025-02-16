@@ -233,7 +233,7 @@ function postIdolPic () {
    fi
    checkRefresh
    if [ "$?" != "0" ]; then rm -f $bap_preparedImage; return 1; fi
-   if [ "$imageCacheStrategy" != "2" ] || [ ! -z "$bloblink" ]; then
+   if [ "$imageCacheStrategy" != "2" ] || [ -z "$bloblink" ]; then
       $iecho "uploading image to pds"
       bap_postBlobToPDS $bap_preparedImage $bap_preparedMime
       if [ "$?" != "0" ]; then
