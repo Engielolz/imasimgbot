@@ -253,7 +253,7 @@ function postIdolPic () {
       return 1
    fi
    $iecho "image upload SUCCESS"
-   if [ "$imageCacheStrategy" != "0" ] && [ -z "$bloblink" ]; then sed -i "s/bloblink=/bloblink=$bap_postedBlob/g" $imageCacheLocation/cache.txt; fi
+   if [ "$imageCacheStrategy" != "0" ] && [ -z "$bloblink" ]; then sed -i "s/bloblink=/bloblink=$bap_postedBlob/g" $cachePath/cache.txt; fi
    return 0
 }
 
