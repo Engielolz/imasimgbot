@@ -243,8 +243,9 @@ function postIdolPic () {
       fi
       if [ "$imageCacheStrategy" != "0" ]; then saveToImageCache; fi
       rm $bap_preparedImage
-      # check preparedMime/postedMime and preparedSize/postedSize
+   else $iecho "reusing cached blob id"
    fi
+   # check preparedMime/postedMime and preparedSize/postedSize
    $iecho "posting image"
    bap_postImageToBluesky $bap_postedBlob $bap_postedMime $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt"
    if [ "$?" != "0" ]; then

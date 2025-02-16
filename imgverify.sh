@@ -44,11 +44,22 @@ function fetchImageCache () {
    return 0
 }
 
+function prepImage () {
+   bap_prepareImageForBluesky "$imagepath" >/dev/null 2>&1
+      if [ "$?" != "0" ]; then
+         printerrcmd "failed to prep image"
+         if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
+         return 1
+      fi
+         if [ "$1" = "clear" ]; then rm -f $bap_preparedImage; fi
+}
+
 function saveToImageCache () {
    cachePath=
    if [ "$1" = "sub" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
    if [ -f "$cachePath/cache.txt" ]; then return 0; fi # already cached
    mkdir -p $cachePath
+   prepImage
    echo "orighash=$(sha256sum "$imagepath" | awk '{print $1}')" > $cachePath/cache.txt
    echo "cachehash=$(sha256sum $bap_preparedImage | awk '{print $1}')" >> $cachePath/cache.txt
    echo "cacheimgtype=${bap_preparedImage##*.}" >> $cachePath/cache.txt
@@ -59,6 +70,15 @@ function saveToImageCache () {
    echo "bloblink=$bap_postedBlob" >> $cachePath/cache.txt
    cp -f $bap_preparedImage $cachePath/cache.${bap_preparedImage##*.}
    bloblink=$bap_postedBlob # don't run sed after image upload
+   rm -f $bap_preparedImage 2> /dev/null
+}
+
+function checkImage () {
+   if [ "$1" = "sub" ]; then printerrcmd=printsuberr; else printerrcmd=printerr; fi
+   if [ -z "$imgtype" ]; then $printerrcmd "no imgtype"; return 1; fi
+   if ! [ -f "$imagepath" ]; then $printerrcmd "no image"; return 1; fi
+   if [ "$2" = "--scan" ] && ! [ "$imgtype" = "mp4" ]; then prepImage clear; if [ "$?" != "0" ]; then return 1; fi; fi
+   return 0
 }
 
 function scanSubentries () {
@@ -72,19 +92,11 @@ function scanSubentries () {
       loadConfig data/$idol/images/$image/$subimage/info.txt
       if ! [ "$?" = "0" ]; then printsuberr "no subentry data"; continue; fi
       if [ "$subentries" = "1" ]; then printsuberr "nested subentry not supported"; fi
-      if [ -z "$imgtype" ]; then printsuberr "no imgtype"; continue; fi
       imagepath=data/$idol/images/$image/$subimage/image.$imgtype
-      if ! [ -f "$imagepath" ]; then printsuberr "no image"; continue; fi
+      checkImage sub $(if [ "$scan" = "1" ]; then echo "--scan"; fi)
+      if [ "$?" != "0" ]; then continue; fi
       if [ "$cacheverify" = "1" ] && ! [ "$imgtype" = "mp4" ]; then fetchImageCache sub; if [ "$?" = "2" ]; then rm -r $cachePath; fi; fi
-      if [ "$scan" -ge "1" ] && ! [ "$imgtype" = "mp4" ]; then
-         bap_prepareImageForBluesky "$imagepath" >/dev/null 2>&1
-         if [ "$?" != "0" ]; then
-            printsuberr "failed to prep image"
-            if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
-         fi
-         if [ "$scan" = "2" ]; then saveToImageCache sub; fi
-         rm -f $bap_preparedImage
-      fi
+      if [ "$scan" = "2" ]; then saveToImageCache sub; fi
    done
 }
 
@@ -116,6 +128,7 @@ for i in $(seq 1 $(cat data/idols.txt | wc -l)); do
    idol=$(cat data/idols.txt | sed -n $i'p')
    echo "Checking image data for $idol"
    loadConfig data/$idol/idol.txt
+   if [ ! -f "data/$idol/images/$event.txt" ]; then echo "$idol has no data for $event, skipping"; continue; fi
    echo $event has $(cat data/$idol/images/$event.txt | wc -l) entries
    for i in $(seq 1 $(cat data/$idol/images/$event.txt | wc -l)); do
       image=$(cat data/$idol/images/$event.txt | sed -n $i'p')
@@ -126,19 +139,11 @@ for i in $(seq 1 $(cat data/idols.txt | wc -l)); do
       if ! [ "$?" = "0" ]; then printerr "no entry data"; continue; fi
       if [ "$subentries" = "1" ]; then scanSubentries; continue; fi
       if [ -f data/$idol/images/$image/subentries.txt ]; then printerr "subentries detected but not enabled (overwrite info.txt with subentries=1)"; fi
-      if [ -z "$imgtype" ]; then printerr "no imgtype"; continue; fi
       imagepath="data/$idol/images/$image/image.$imgtype"
-      if ! [ -f "$imagepath" ]; then printerr "no image"; continue; fi
+      checkImage main $(if [ "$scan" = "1" ]; then echo "--scan"; fi)
+      if [ "$?" != "0" ]; then continue; fi
       if [ "$cacheverify" = "1" ] && ! [ "$imgtype" = "mp4" ]; then fetchImageCache; if [ "$?" = "2" ]; then rm -r $cachePath; fi; fi
-      if [ "$scan" -ge "1" ] && ! [ "$imgtype" = "mp4" ]; then
-         bap_prepareImageForBluesky "$imagepath" >/dev/null 2>&1
-         if [ "$?" != "0" ]; then
-            printerr "failed to prep image"
-            if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
-         fi
-         if [ "$scan" = "2" ]; then saveToImageCache; fi
-         rm -f $bap_preparedImage
-      fi
+      if [ "$scan" = "2" ]; then saveToImageCache; fi
    done
 done
 
