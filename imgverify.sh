@@ -47,7 +47,7 @@ function fetchImageCache () {
 function prepImage () {
    bap_prepareImageForBluesky "$imagepath" >/dev/null 2>&1
       if [ "$?" != "0" ]; then
-         printerrcmd "failed to prep image"
+         $printerrcmd "failed to prep image"
          if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
          return 1
       fi
@@ -55,6 +55,7 @@ function prepImage () {
 }
 
 function saveToImageCache () {
+   if [ "$imgtype" = "mp4" ]; then return 0; fi
    cachePath=
    if [ "$1" = "sub" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
    if [ -f "$cachePath/cache.txt" ]; then return 0; fi # already cached
