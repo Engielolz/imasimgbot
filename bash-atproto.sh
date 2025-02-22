@@ -4,7 +4,7 @@
 # you can change these
 bap_plcDirectory=https://plc.directory
 bap_handleResolveURL=https://public.api.bsky.app
-bap_curlUserAgent="cURL/$(curl -V | awk 'NR==1{print $2}') bash-atproto/1"
+bap_curlUserAgent="curl/$(curl -V | awk 'NR==1{print $2}') bash-atproto/1"
 bap_chmodSecrets=1
 bap_verbosity=1
 
