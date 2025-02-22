@@ -37,7 +37,7 @@ function loadConfig () {
 
 source ./bash-atproto.sh
 if ! [ "$?" = "0" ]; then loadFail; fi
-bap_curlUserAgent="$bap_curlUserAgent imasimgbot/$internalIdolVer-$(git -c safe.directory='.' describe --always --dirty) (+https://github.com/Engielolz/imasimgbot)"
+bap_curlUserAgent="$bap_curlUserAgent imasimgbot/1.$internalIdolVer-$(git -c safe.directory=$(pwd) describe --always --dirty) (+https://github.com/Engielolz/imasimgbot)"
 
 # Check params
 if [ -z "$1" ] || [ "$1" = "--help" ]; then showHelp; exit 1; fi
