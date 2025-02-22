@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
 function loadFail () {
    echo "Required scripts not found!"
    exit 127

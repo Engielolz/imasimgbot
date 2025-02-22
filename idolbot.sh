@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
 internalIdolVer=4
 svcInterval=900 # must match postInterval in imasimgbot.sh
 
@@ -36,6 +37,7 @@ function loadConfig () {
 
 source ./bash-atproto.sh
 if ! [ "$?" = "0" ]; then loadFail; fi
+bap_curlUserAgent="$bap_curlUserAgent imasimgbot/$internalIdolVer-$(git log -1 --pretty='%h') (+https://github.com/Engielolz/imasimgbot)"
 
 # Check params
 if [ -z "$1" ] || [ "$1" = "--help" ]; then showHelp; exit 1; fi

@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
 echo 'iM@S Image Bot'
 echo 'Powered by bash-atproto'
 

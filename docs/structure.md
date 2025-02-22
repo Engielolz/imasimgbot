@@ -36,7 +36,7 @@ List of idols that should post. Must match directories in data/
 
 ## idol.txt
 
-Contains configuration data. Has the birthday, image override information, the size of the global recents queue and the post interval.
+Contains configuration data. Has the birthday, image override information, the size of the global recents queue, the post interval and image caching options.
 
 ## recents.txt
 

@@ -27,24 +27,22 @@ Posting images (required by imasimgbot) additionally requires:
 
 The other dependencies (like uuidgen) should come with your Linux distro.
 
-## Setup
+## Install
 
-Like the aforementioned 765coverbot, this is intended to be ran on an always-on system behind a router. This does not require direct internet access and ideally the server shouldn't have it.
+Please see the [quick start guide](docs/qsg.md) for instructions on how to use the bot.
 
 The bot can be installed with these commands (as root):
 
 1. Go to `/usr/local/bin` and `git clone` this repository
 
-2. Create the data directory and [its required structure](docs/structure.md).
-   
-   1. You can verify the data structure is correct with the `./imgverify.sh` script.
+2. Add your images and set up accounts in ./data. See the [quick start guide](docs/QSG.md) and [structure.md](docs/structure.md) for instructions.
 
-3. Run the main script with the init-secrets parameter and provide all the individual bots their Bluesky handle and app password:
-   
-   `./imasimgbot.sh init-secrets`
+3. Run `./imasimgbot.sh --install` which will install and enable the bot service
 
-4. Run `./imasimgbot.sh --install` which will install and enable the bot service
-
-5. Start the bot with `systemctl start imasimgbot`
+4. Start the bot with `systemctl start imasimgbot`
 
 To uninstall the bot, stop the bot with `systemctl stop imasimgbot` then run the script as root with the parameter `--uninstall` which will disable and remove the service file. Then you can remove the directory `/usr/local/bin/imasimgbot` to fully remove the bot.
+
+## License
+
+This project (including bash-atproto) is licensed under the [MIT License](LICENSE). PRs welcome, but note that this is hobbyist-grade software. imasimgbot is not recommended for use in safety-critical applications like nuclear power plants, weapon control systems or multimillionaire Japanese idol agencies. Well, maybe not that last one...
