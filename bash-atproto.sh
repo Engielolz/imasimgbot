@@ -4,7 +4,7 @@
 # you can change these
 bap_plcDirectory=https://plc.directory
 bap_handleResolveURL=https://public.api.bsky.app
-bap_curlUserAgent="curl/$(curl -V | awk 'NR==1{print $2}') bash-atproto/1"
+bap_curlUserAgent="curl/$(curl -V | awk 'NR==1{print $2}') bash-atproto/2"
 bap_chmodSecrets=1
 bap_verbosity=1
 
@@ -46,7 +46,7 @@ function bapInternal_processAPIError () {
    APIErrorMessage=$(echo ${!2} | jq -r .message)
    baperr 'Error code:' $APIErrorCode
    baperr 'Message:' $APIErrorMessage
-   if [ "$APIErrorCode" = "AccountTakedown" ] || [ "$APIErrorCode" = "InvalidRequest" ] || [ "$APIErrorCode" = "InvalidToken" ]; then 
+   if [ "$APIErrorCode" = "AccountTakedown" ] || [ "$APIErrorCode" = "InvalidRequest" ] || [ "$APIErrorCode" = "InvalidToken" ]; then
       baperr "Safety triggered. Dumping error and shutting down."
       echo ${!2} > ./fatal.json
       exit 115
@@ -54,23 +54,31 @@ function bapInternal_processAPIError () {
 }
 
 function bapInternal_processCurlError () {
-   baperr "cURL threw an exception $error in function $1"
+   baperr "cURL threw an exception $bap_legacyerror in function $1"
+}
+
+function bapInternal_errorCheck () {
+   case $1 in
+      0);;
+      22)
+         if [ ! -z "$3" ]; then baperr "$3"; fi
+         APIErrorCode=$(echo $bap_result | jq -r .error)
+         if ! [ "$APIErrorCode" = "ExpiredToken" ]; then bapInternal_processAPIError $2 bap_result; return 1; fi
+         baperr 'the token needs to be refreshed'
+         return 2;;
+      *)
+         if [ ! -z "$3" ]; then baperr "$3"; fi
+         baperr "cURL threw exception $1 in function $2"
+         return 1;;
+   esac
 }
 
 function bap_getKeys () { # 1: failure 2: user error
    if [ -z "$2" ]; then baperr "No app password was passed"; return 2; fi
    bapecho 'fetching keys'
-   bap_keyInfo=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H 'Content-Type: application/json' -d "{ \"identifier\": \"$1\", \"password\": \"$2\" }" "$savedPDS/xrpc/com.atproto.server.createSession")
-   error=$?
-   if [ "$error" != "0" ]; then
-      baperr 'fatal: failed to authenticate'
-      if ! [ "$error" = "22" ]; then bapInternal_processCurlError bap_getKeys; return 1; fi
-      bapInternal_processAPIError bap_getKeys bap_keyInfo
-      echo $bap_keyInfo > failauth.json
-      return 1
-   fi
+   bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H 'Content-Type: application/json' -d "{ \"identifier\": \"$1\", \"password\": \"$2\" }" "$savedPDS/xrpc/com.atproto.server.createSession")
+   bapInternal_errorCheck $? bap_getKeys "fatal: failed to authenticate" || return $?
    bapecho secured the keys!
-   # echo $bap_keyInfo > debug.json
    savedAccess=$(echo $bap_keyInfo | jq -r .accessJwt)
    savedRefresh=$(echo $bap_keyInfo | jq -r .refreshJwt)
    savedDID=$(echo $bap_keyInfo | jq -r .did)
@@ -78,34 +86,68 @@ function bap_getKeys () { # 1: failure 2: user error
 }
 
 function bap_refreshKeys () {
-   bapecho 'Trying to refresh keys...'
    if [ -z "$savedRefresh" ]; then baperr "cannot refresh without a saved refresh token"; return 1; fi
-   bap_keyInfo=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedRefresh" -H 'Content-Type: application/json' "$savedPDS/xrpc/com.atproto.server.refreshSession")
-   error=$?
-   if [ "$error" != "0" ]; then
-      baperr 'fatal: failed to refresh keys!'
-      if ! [ "$error" = "22" ]; then bapInternal_processCurlError bap_refreshKeys; return 1; fi
-      bapInternal_processAPIError bap_refreshKeys bap_keyInfo
-      echo $bap_keyInfo > failauth.json
-      return 1
-   fi
+   bapecho 'Trying to refresh keys...'
+   bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedRefresh" -H 'Content-Type: application/json' "$savedPDS/xrpc/com.atproto.server.refreshSession")
+   bapInternal_errorCheck $? bap_refreshKeys "fatal: failed to refesh keys!" || return $?
    savedAccess=$(echo $bap_keyInfo | jq -r .accessJwt)
    savedRefresh=$(echo $bap_keyInfo | jq -r .refreshJwt)
    savedDID=$(echo $bap_keyInfo | jq -r .did)
 }
 
+function bapCYOR_str () {
+   # for quotes
+   if [ -z "$1" ]; then baperr "nothing to add"; return 1; fi
+   if [ -z "$bap_cyorRecord" ]; then bap_cyorRecord="{}"; fi
+   bap_temp=$2
+   bap_cyorRecord=$(echo "$bap_cyorRecord" | jq -c "$3.[\"$1\"]=\"$bap_temp\"")
+   return $?
+}
+
+function bapCYOR_add () {
+   # for things that shouldn't be in quotes
+   if [ -z "$1" ]; then baperr "nothing to add"; return 1; fi
+   if [ -z "$bap_cyorRecord" ]; then bap_cyorRecord="{}"; fi
+   # if ! [ "$2" -eq "$2" ] 2>/dev/null; then bap_temp="\"$2\""; else bap_temp=$2; fi
+   bap_temp=$2
+   bap_cyorRecord=$(echo "$bap_cyorRecord" | jq -c "$3.[\"$1\"]=$bap_temp")
+   return $?
+}
+
+function bapCYOR_rem () {
+   # doesn't handle special names atm
+   if [ -z "$1" ] || [ -z "bap_cyorRecord" ]; then baperr "nothing to remove"; return 1; fi
+   bap_cyorRecord=$(echo $bap_cyorRecord | jq -c "del(.$1)")
+   return $?
+}
+
+function bapCYOR_bskypost () {
+   bap_cyorRecord="{}"
+   bapCYOR_str \$type app.bsky.feed.post
+   bapCYOR_str text ""
+}
+
+function bapInternal_finalizeRecord () {
+   if ! jq -e . >/dev/null <<<"$1"; then baperr "can't finalize: JSON parse error"; return 1; fi
+   bap_finalRecord="{\"collection\": $(echo $1 | jq -c '.["$type"]'), \"repo\": \"$savedDID\", \"record\": $1}"
+   if ! jq -e . >/dev/null <<<"$1"; then baperr "finalize: JSON parse error"; return 1; fi
+   return 0
+}
+
+function bap_postRecord () {
+   bapInternal_finalizeRecord "$1" || { baperr "not posting because finalize failed"; return 1; }
+   bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "$bap_finalRecord" "$savedPDS/xrpc/com.atproto.repo.createRecord")
+   bapInternal_errorCheck $? bap_postRecord "failed to post record" || return $?
+   return 0
+}
+
 function bap_postToBluesky () { #1: exception 2: refresh required
    if [ -z "$1" ]; then baperr "fatal: No argument given to post"; return 1; fi
-   bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$savedDID\", \"record\": { \"text\": \"$1\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"langs\": [ \"en-US\" ] } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
-   error=$?
-   if [ "$error" != "0" ]; then
-      baperr 'warning: the post failed.'
-      if ! [ "$error" = "22" ]; then bapInternal_processCurlError bap_postToBluesky; return 1; fi
-      APIErrorCode=$(echo $bap_result | jq -r .error)
-      if ! [ "$APIErrorCode" = "ExpiredToken" ]; then bapInternal_processAPIError bap_postToBluesky bap_result; return 1; fi
-      baperr 'the token needs to be refreshed'
-      return 2
-   fi
+   bapCYOR_bskypost
+   bapCYOR_str text "$1"
+   if ! [ -z "2" ]; then bapCYOR_add langs "[\"$2\"]"; fi
+   bapCYOR_str createdAt $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+   bap_postRecord "$bap_cyorRecord" || return $?
    uri=$(echo $bap_result | jq -r .uri)
    cid=$(echo $bap_result | jq -r .cid)
    bapecho "Posted record at $uri"
@@ -114,16 +156,12 @@ function bap_postToBluesky () { #1: exception 2: refresh required
 
 function bap_repostToBluesky () { # arguments 1 is uri, 2 is cid. error codes same as postToBluesky
    if [ -z "$2" ]; then baperr "fatal: Required argument missing"; return 1; fi
-   bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.repost\", \"repo\": \"$savedDID\", \"record\": { \"subject\": { \"uri\": \"$1\", \"cid\": \"$2\" }, \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.repost\" } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
-   error=$?
-   if [ "$error" != "0" ]; then
-      baperr 'warning: repost failed.'
-      if ! [ "$error" = "22" ]; then bapInternal_processCurlError bap_repostToBluesky; return 1; fi
-      APIErrorCode=$(echo $bap_result | jq -r .error)
-      if ! [ "$APIErrorCode" = "ExpiredToken" ]; then bapInternal_processAPIError bap_repostToBluesky bap_result; return 1; fi
-      baperr 'the token needs to be refreshed'
-      return 2
-   fi
+   bap_cyorRecord=
+   bapCYOR_str \$type app.bsky.feed.repost
+   bapCYOR_str cid $2 .subject
+   bapCYOR_str uri $1 .subject
+   bapCYOR_str createdAt $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+   bap_postRecord "$bap_cyorRecord" || return $?
    uri=$(echo $bap_result | jq -r .uri)
    cid=$(echo $bap_result | jq -r .cid)
    bapecho "Repost record at $uri"
@@ -157,7 +195,7 @@ function bap_prepareImageForBluesky () { # 1: error 2 missing dep
       bapHelper_resizeImageForBluesky
       if ! [ "$?" = "0" ]; then return 1; fi
    fi
-   if [[ $(stat -c %s /tmp/bash-atproto/$workfile) -gt 1000000 ]]; then 
+   if [[ $(stat -c %s /tmp/bash-atproto/$workfile) -gt 1000000 ]]; then
       bapHelper_compressImageForBluesky
       if ! [ "$?" = "0" ]; then return 1; fi
    fi
@@ -176,15 +214,7 @@ function bap_postBlobToPDS () {
 # $2 is the mime type
    if [ -z "$2" ]; then baperr "fatal: Required argument missing"; return 1; fi
    bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedAccess" -H "Content-Type: $2" --data-binary @"$1" "$savedPDS/xrpc/com.atproto.repo.uploadBlob")
-   error=$?
-   if [ "$error" != "0" ]; then
-      baperr 'warning: upload failed.'
-      if ! [ "$error" = "22" ]; then bapInternal_processCurlError bap_postBlobToPDS; return 1; fi
-      APIErrorCode=$(echo $bap_result | jq -r .error)
-      if ! [ "$APIErrorCode" = "ExpiredToken" ]; then bapInternal_processAPIError bap_postBlobToPDS bap_result; return 1; fi
-      baperr 'error: token needs to be refreshed'
-      return 2
-   fi
+   bapInternal_errorCheck $? bap_postBlobToPDS "error: blob upload failed" || return $?
    bap_postedBlob=$(echo $bap_result | jq -r .blob.ref.'"$link"')
    bap_postedMime=$(echo $bap_result | jq -r .blob.mimeType)
    bap_postedSize=$(echo $bap_result | jq -r .blob.size)
@@ -202,17 +232,19 @@ function bap_postImageToBluesky () { #1: exception 2: refresh required
 # 6 - alt text
 # 7 - text
    if [ -z "$5" ]; then baperr "fatal: more arguments required"; return 1; fi
-   # there is a disturbing lack of error checking
-   bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$savedDID\", \"record\": { \"text\": \"$7\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"\$type\": \"app.bsky.embed.images\", \"images\": [ { \"alt\": \"$6\", \"aspectRatio\": { \"height\": $5, \"width\": $4 }, \"image\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"$2\", \"size\": $3 } } ] } } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
-   error=$?
-   if [ "$error" != "0" ]; then
-      baperr 'warning: the post failed.'
-      if ! [ "$error" = "22" ]; then bapInternal_processCurlError bap_postImageToBluesky; return 1; fi
-      APIErrorCode=$(echo $bap_result | jq -r .error)
-      if ! [ "$APIErrorCode" = "ExpiredToken" ]; then bapInternal_processAPIError bap_postImageToBluesky bap_result; return 1; fi
-      baperr 'the token needs to be refreshed'
-      return 2
-   fi
+   # it's easy but just LOOK at all those commands
+   bapCYOR_bskypost
+   bapCYOR_str text "$7"
+   bapCYOR_str \$type app.bsky.embed.images .embed
+   bapCYOR_str alt "$6" .embed.images.[0]
+   bapCYOR_str \$type blob .embed.images.[0].image
+   bapCYOR_str \$link $1 .embed.images.[0].image.ref
+   bapCYOR_str mimeType "$2" .embed.images.[0].image
+   bapCYOR_add size $3 .embed.images.[0].image
+   bapCYOR_add width $4 .embed.images.[0].aspectRatio
+   bapCYOR_add height $5 .embed.images.[0].aspectRatio
+   bapCYOR_str createdAt $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+   bap_postRecord "$bap_cyorRecord" || return $?
    uri=$(echo $bap_result | jq -r .uri)
    cid=$(echo $bap_result | jq -r .cid)
    bapecho "Posted record at $uri"
@@ -243,16 +275,18 @@ function bap_postVideoToBluesky () {
 # 6 - text
 # assuming video/mp4 is always the mimetype might be a bad assumption
    if [ -z "$4" ]; then baperr "fatal: more arguments required"; return 1; fi
-   bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedAccess" -H 'Content-Type: application/json' -d "{ \"collection\": \"app.bsky.feed.post\", \"repo\": \"$savedDID\", \"record\": { \"text\": \"$6\", \"createdAt\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\", \"\$type\": \"app.bsky.feed.post\", \"embed\": { \"alt\": \"$5\", \"\$type\": \"app.bsky.embed.video\", \"video\": { \"\$type\": \"blob\", \"ref\": { \"\$link\": \"$1\" }, \"mimeType\": \"video/mp4\", \"size\": $2 }, \"aspectRatio\": { \"width\": $3, \"height\": $4 } } } } " "$savedPDS/xrpc/com.atproto.repo.createRecord")
-   error=$?
-   if [ "$error" != "0" ]; then
-      baperr 'warning: the post failed.'
-      if ! [ "$error" = "22" ]; then bapInternal_processCurlError bap_postVideoToBluesky; return 1; fi
-      APIErrorCode=$(echo $bap_result | jq -r .error)
-      if ! [ "$APIErrorCode" = "ExpiredToken" ]; then bapInternal_processAPIError bap_postVideoToBluesky bap_result; return 1; fi
-      baperr 'the token needs to be refreshed'
-      return 2
-   fi
+   bapCYOR_bskypost
+   bapCYOR_str text "$6"
+   bapCYOR_str alt "$5" .embed
+   bapCYOR_str \$type app.bsky.embed.video .embed
+   bapCYOR_str \$type blob .embed.video
+   bapCYOR_str \$link "$1" .embed.video.ref
+   bapCYOR_str mimeType "video/mp4" .embed.video
+   bapCYOR_add size $2 .embed.video
+   bapCYOR_add width $3 .embed.aspectRatio
+   bapCYOR_add height $4 .embed.aspectRatio
+   bap_postRecord "$bap_cyorRecord"
+   bapInternal_errorCheck $? bap_postVideoToBluesky "error: post failed" || return $?
    uri=$(echo $bap_result | jq -r .uri)
    cid=$(echo $bap_result | jq -r .cid)
    bapecho "Posted record at $uri"
@@ -268,12 +302,14 @@ function bap_findPDS () {
 
       "plc")
       bap_resolve=$(curl -s --fail-with-body -A "$bap_curlUserAgent" "$bap_plcDirectory/$1")
-      if ! [ "$?" = "0" ]; then baperr "fatal: did:plc lookup failed"; bapInternal_processCurlError bap_findPDS; return 1; fi
+      bap_legacyerror=$?
+      if ! [ "$bap_legacyerror" = "0" ]; then baperr "fatal: did:plc lookup failed"; bapInternal_processCurlError bap_findPDS; return 1; fi
       ;;
 
       "web")
       bap_resolve=$(curl -s --fail-with-body -A "$bap_curlUserAgent" "$(echo https://$1 | sed 's/did:web://g')/.well-known/did.json")
-      if ! [ "$?" = "0" ]; then baperr "fatal: did:web lookup failed"; bapInternal_processCurlError bap_findPDS; return 1; fi
+      bap_legacyerror=$?
+      if ! [ "$bap_legacyerror" = "0" ]; then baperr "fatal: did:web lookup failed"; bapInternal_processCurlError bap_findPDS; return 1; fi
       ;;
 
       *)
