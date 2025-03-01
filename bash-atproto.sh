@@ -79,9 +79,9 @@ function bap_getKeys () { # 1: failure 2: user error
    bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H 'Content-Type: application/json' -d "{ \"identifier\": \"$1\", \"password\": \"$2\" }" "$savedPDS/xrpc/com.atproto.server.createSession")
    bapInternal_errorCheck $? bap_getKeys "fatal: failed to authenticate" || return $?
    bapecho secured the keys!
-   savedAccess=$(echo $bap_keyInfo | jq -r .accessJwt)
-   savedRefresh=$(echo $bap_keyInfo | jq -r .refreshJwt)
-   savedDID=$(echo $bap_keyInfo | jq -r .did)
+   savedAccess=$(echo $bap_result | jq -r .accessJwt)
+   savedRefresh=$(echo $bap_result | jq -r .refreshJwt)
+   savedDID=$(echo $bap_result | jq -r .did)
    # we don't care about the handle
 }
 
@@ -90,9 +90,9 @@ function bap_refreshKeys () {
    bapecho 'Trying to refresh keys...'
    bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedRefresh" -H 'Content-Type: application/json' "$savedPDS/xrpc/com.atproto.server.refreshSession")
    bapInternal_errorCheck $? bap_refreshKeys "fatal: failed to refesh keys!" || return $?
-   savedAccess=$(echo $bap_keyInfo | jq -r .accessJwt)
-   savedRefresh=$(echo $bap_keyInfo | jq -r .refreshJwt)
-   savedDID=$(echo $bap_keyInfo | jq -r .did)
+   savedAccess=$(echo $bap_result | jq -r .accessJwt)
+   savedRefresh=$(echo $bap_result | jq -r .refreshJwt)
+   savedDID=$(echo $bap_result | jq -r .did)
 }
 
 function bapCYOR_str () {
