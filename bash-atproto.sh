@@ -23,7 +23,10 @@ function bapverbose () {
 }
 
 function bap_decodeJwt () {
-   bap_jwt="$(echo $1 | cut -d '.' -f 2 | base64 -d | jq -re)" || { baperr "not a jwt"; return 1; }
+   bap_jwt="$(echo $1 | cut -d '.' -f 2 \
+   | echo "$1====" | fold -w 4 | sed '$ d' | tr -d '\n' | tr '_-' '/+' \
+   | base64 -d | jq -re)" || { baperr "not a jwt"; return 1; }
+   # 1: fetch JWT payload 2: pad and convert to base64 3: decode
    return 0
 }
 
@@ -36,10 +39,10 @@ function bapInternal_loadFromJwt () {
 
 function bap_loadSecrets () {
    if [[ -f $1 ]]; then while IFS= read -r line; do declare -g "$line"; done < "$1"
-   return 0
-   else return 1
    bap_decodeJwt "$savedAccess" || return 1
    bapInternal_loadFromJwt
+   return 0
+   else return 1
    fi
 }
 
