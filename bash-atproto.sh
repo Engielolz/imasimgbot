@@ -22,21 +22,32 @@ function bapverbose () {
    echo "bash-atproto: $*"
 }
 
+function bap_decodeJwt () {
+   bap_jwt="$(echo $1 | cut -d '.' -f 2 | base64 -d | jq -re)" || { baperr "not a jwt"; return 1; }
+   return 0
+}
+
+function bapInternal_loadFromJwt () {
+   savedDID="$(echo $bap_jwt | jq -r .sub)"
+   savedPDS="https://$(echo $bap_jwt | jq -r .aud | sed 's/did:web://g')"
+   savedAccessTimestamp="$(echo $bap_jwt | jq -r .iat)" #deprecated
+   savedAccessExpiry="$(echo $bap_jwt | jq -r .exp)"
+}
+
 function bap_loadSecrets () {
    if [[ -f $1 ]]; then while IFS= read -r line; do declare -g "$line"; done < "$1"
    return 0
    else return 1
+   bap_decodeJwt "$savedAccess" || return 1
+   bapInternal_loadFromJwt
    fi
 }
 
 function bap_saveSecrets () {
    bapecho 'Updating secrets'
-   echo 'savedAccess='$savedAccess > $1
-   echo 'savedRefresh='$savedRefresh >> $1
-   echo 'savedDID='$savedDID >> $1
-   echo 'savedAccessTimestamp='$(date +%s) >> $1
-   echo 'savedPDS='$savedPDS >> $1
-   if [ "$bap_chmodSecrets" != "0" ]; then chmod 600 $1; fi
+   echo 'savedAccess='$savedAccess > "$1"
+   echo 'savedRefresh='$savedRefresh >> "$1"
+   if [ "$bap_chmodSecrets" != "0" ]; then chmod 600 "$1"; fi
    return 0
 }
 
@@ -46,11 +57,6 @@ function bapInternal_processAPIError () {
    APIErrorMessage=$(echo ${!2} | jq -r .message)
    baperr 'Error code:' $APIErrorCode
    baperr 'Message:' $APIErrorMessage
-   if [ "$APIErrorCode" = "AccountTakedown" ] || [ "$APIErrorCode" = "InvalidRequest" ] || [ "$APIErrorCode" = "InvalidToken" ]; then
-      baperr "Safety triggered. Dumping error and shutting down."
-      echo ${!2} > ./fatal.json
-      exit 115
-   fi;
 }
 
 function bapInternal_processCurlError () {
@@ -73,26 +79,46 @@ function bapInternal_errorCheck () {
    esac
 }
 
+function bapInternal_verifyStatus () {
+   if [ "$(echo $bap_result | jq -r .active)" = "false" ]; then
+      baperr "fatal: account is inactive"
+      if [ ! -z "$(echo $bap_result | jq -r .status)" ]; then baperr "pds said: $(echo $bap_result | jq -r .status)"; else baperr "no reason was given for the account not being active"; fi
+      return 115
+   fi
+}
+
 function bap_getKeys () { # 1: failure 2: user error
    if [ -z "$2" ]; then baperr "No app password was passed"; return 2; fi
    bapecho 'fetching keys'
    bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H 'Content-Type: application/json' -d "{ \"identifier\": \"$1\", \"password\": \"$2\" }" "$savedPDS/xrpc/com.atproto.server.createSession")
    bapInternal_errorCheck $? bap_getKeys "fatal: failed to authenticate" || return $?
    bapecho secured the keys!
+   bapInternal_verifyStatus || return $?
    savedAccess=$(echo $bap_result | jq -r .accessJwt)
    savedRefresh=$(echo $bap_result | jq -r .refreshJwt)
    savedDID=$(echo $bap_result | jq -r .did)
    # we don't care about the handle
+   bap_decodeJwt $savedAccess
+   if [ "$(echo $bap_jwt | jq -r .scope)" != "com.atproto.appPass" ]; then baperr "warning: this is not an app password"; fi
 }
 
 function bap_refreshKeys () {
    if [ -z "$savedRefresh" ]; then baperr "cannot refresh without a saved refresh token"; return 1; fi
    bapecho 'Trying to refresh keys...'
-   bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedRefresh" -H 'Content-Type: application/json' "$savedPDS/xrpc/com.atproto.server.refreshSession")
+   bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedRefresh" "$savedPDS/xrpc/com.atproto.server.refreshSession")
    bapInternal_errorCheck $? bap_refreshKeys "fatal: failed to refesh keys!" || return $?
+   bapInternal_verifyStatus || return $?
    savedAccess=$(echo $bap_result | jq -r .accessJwt)
    savedRefresh=$(echo $bap_result | jq -r .refreshJwt)
-   savedDID=$(echo $bap_result | jq -r .did)
+}
+
+function bap_closeSession () {
+   if [ -z "$savedAccess" ]; then baperr "need access token to close session"; return 1; fi
+   bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedRefresh" "$savedPDS/xrpc/com.atproto.server.deleteSession")
+   bapInternal_errorCheck $? bap_closeSession "error: failed to delete session" || return $?
+   savedAccess= savedRefresh=
+   bapecho "session closed successfully"
+   return 0
 }
 
 function bapCYOR_str () {
@@ -108,7 +134,6 @@ function bapCYOR_add () {
    # for things that shouldn't be in quotes
    if [ -z "$1" ]; then baperr "nothing to add"; return 1; fi
    if [ -z "$bap_cyorRecord" ]; then bap_cyorRecord="{}"; fi
-   # if ! [ "$2" -eq "$2" ] 2>/dev/null; then bap_temp="\"$2\""; else bap_temp=$2; fi
    bap_temp=$2
    bap_cyorRecord=$(echo "$bap_cyorRecord" | jq -c "$3.[\"$1\"]=$bap_temp")
    return $?
