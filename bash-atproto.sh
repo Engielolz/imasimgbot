@@ -313,6 +313,7 @@ function bap_postVideoToBluesky () {
    bapCYOR_add size $2 .embed.video
    bapCYOR_add width $3 .embed.aspectRatio
    bapCYOR_add height $4 .embed.aspectRatio
+   bapCYOR_str createdAt $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
    bap_postRecord "$bap_cyorRecord"
    bapInternal_errorCheck $? bap_postVideoToBluesky "error: post failed" || return $?
    uri=$(echo $bap_result | jq -r .uri)
