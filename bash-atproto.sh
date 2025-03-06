@@ -62,10 +62,6 @@ function bapInternal_processAPIError () {
    baperr 'Message:' $APIErrorMessage
 }
 
-function bapInternal_processCurlError () {
-   baperr "cURL threw an exception $bap_legacyerror in function $1"
-}
-
 function bapInternal_errorCheck () {
    case $1 in
       0);;
@@ -84,10 +80,15 @@ function bapInternal_errorCheck () {
 
 function bapInternal_verifyStatus () {
    if [ "$(echo $bap_result | jq -r .active)" = "false" ]; then
-      baperr "fatal: account is inactive"
+      baperr "warning: account is inactive"
       if [ ! -z "$(echo $bap_result | jq -r .status)" ]; then baperr "pds said: $(echo $bap_result | jq -r .status)"; else baperr "no reason was given for the account not being active"; fi
       return 115
    fi
+}
+
+function bapInternal_validateDID () {
+   if ! [[ "$1" =~ ^did:[a-z]+:[a-zA-Z0-9._:%-]*[a-zA-Z0-9._-]$ ]]; then baperr "fatal: input not a did"; return 1; fi
+   return 0
 }
 
 function bap_getKeys () { # 1: failure 2: user error
@@ -96,23 +97,25 @@ function bap_getKeys () { # 1: failure 2: user error
    bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H 'Content-Type: application/json' -d "{ \"identifier\": \"$1\", \"password\": \"$2\" }" "$savedPDS/xrpc/com.atproto.server.createSession")
    bapInternal_errorCheck $? bap_getKeys "fatal: failed to authenticate" || return $?
    bapecho secured the keys!
-   bapInternal_verifyStatus || return $?
    savedAccess=$(echo $bap_result | jq -r .accessJwt)
    savedRefresh=$(echo $bap_result | jq -r .refreshJwt)
-   savedDID=$(echo $bap_result | jq -r .did)
    # we don't care about the handle
    bap_decodeJwt $savedAccess
    if [ "$(echo $bap_jwt | jq -r .scope)" != "com.atproto.appPass" ]; then baperr "warning: this is not an app password"; fi
+   bapInternal_verifyStatus || return $?
+   return 0
 }
 
 function bap_refreshKeys () {
    if [ -z "$savedRefresh" ]; then baperr "cannot refresh without a saved refresh token"; return 1; fi
    bapecho 'Trying to refresh keys...'
    bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedRefresh" "$savedPDS/xrpc/com.atproto.server.refreshSession")
-   bapInternal_errorCheck $? bap_refreshKeys "fatal: failed to refesh keys!" || return $?
-   bapInternal_verifyStatus || return $?
+   bapInternal_errorCheck $? bap_refreshKeys "fatal: failed to refresh keys!" || return $?
    savedAccess=$(echo $bap_result | jq -r .accessJwt)
    savedRefresh=$(echo $bap_result | jq -r .refreshJwt)
+   bap_decodeJwt $savedAccess
+   bapInternal_verifyStatus || return $?
+   return 0
 }
 
 function bap_closeSession () {
@@ -324,21 +327,17 @@ function bap_postVideoToBluesky () {
 
 function bap_findPDS () {
    if [ -z "$1" ]; then baperr "fatal: no did specified"; return 1; fi
-   bap_didType=0
-   if ! [ -z "$(echo $1 | grep did:plc:)" ]; then bap_didType=plc; fi
-   if ! [ -z "$(echo $1 | grep did:web:)" ]; then bap_didType=web; fi
-   case "$bap_didType" in
+   bapInternal_validateDID "$1" || return 1
+   case "$(echo $1 | cut -d ':' -f 2)" in
 
       "plc")
-      bap_resolve=$(curl -s --fail-with-body -A "$bap_curlUserAgent" "$bap_plcDirectory/$1")
-      bap_legacyerror=$?
-      if ! [ "$bap_legacyerror" = "0" ]; then baperr "fatal: did:plc lookup failed"; bapInternal_processCurlError bap_findPDS; return 1; fi
+      bap_result=$(curl -s --fail-with-body -A "$bap_curlUserAgent" "$bap_plcDirectory/$1")
+      bapInternal_errorCheck $? bap_findPDS "fatal: did:plc lookup failed" || return $?
       ;;
 
       "web")
-      bap_resolve=$(curl -s --fail-with-body -A "$bap_curlUserAgent" "$(echo https://$1 | sed 's/did:web://g')/.well-known/did.json")
-      bap_legacyerror=$?
-      if ! [ "$bap_legacyerror" = "0" ]; then baperr "fatal: did:web lookup failed"; bapInternal_processCurlError bap_findPDS; return 1; fi
+      bap_result=$(curl -s --fail-with-body -A "$bap_curlUserAgent" "$(echo https://$1 | sed 's/did:web://g')/.well-known/did.json")
+      bapInternal_errorCheck $? bap_findPDS "fatal: did:web lookup failed" || return $?
       ;;
 
       *)
@@ -346,7 +345,7 @@ function bap_findPDS () {
       return 1
       ;;
    esac
-   bap_resolve=$(echo $bap_resolve | jq -re .service)
+   bap_resolve=$(echo $bap_result | jq -re .service)
    if ! [ "$?" = "0" ]; then baperr "fatal: failed to parse DID document"; return 1; fi
    iter=0
    while read -r id; do
@@ -364,7 +363,7 @@ function bap_findPDS () {
 function bap_didInit () {
 if [ -z "$1" ]; then baperr "specify identifier as first parameter"; return 1; fi
 
-if [[ "$1" =~ ^did:[a-z]+:[a-zA-Z0-9._:%-]*[a-zA-Z0-9._-]$ ]] ; then
+if bapInternal_validateDID $1 2> /dev/null; then
    savedDID=$1
    bapecho "Using user-specified DID: $savedDID"
    return 0
@@ -379,7 +378,7 @@ elif [[ "$1" =~ ^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]([a-zA-
    bapecho "Using DID from API: $savedDID"
 
 else
-   baperr "input not a handle or did"
+   baperr "fatal: input not a handle or did"
    return 1
 
 fi
