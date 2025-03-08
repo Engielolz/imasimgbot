@@ -283,7 +283,7 @@ function bap_postImageToBluesky () { #1: exception 2: refresh required
 }
 
 function bap_checkVideoForBluesky () {
-   if [ ! -f $1 ]; then baperr "error: specify file to check"
+   if [ ! -f $1 ]; then baperr "error: specify file to check"; return 1; fi
    if [[ $(stat -c %s $1) -gt 100000000 ]]; then baperr 'fatal: video may not exceed 100 mb'; return 1; fi
    if [ "$(exiftool -duration# -s3 $1 | awk '{print int($1+0.5)}')" -gt "180" ]; then baperr "error: video length must be 3 minutes or less"; return 1; fi
    return 0
