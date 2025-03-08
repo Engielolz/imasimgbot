@@ -182,7 +182,7 @@ function fetchImageCache () {
 function loadCachedImage () {
    # expects fetchImageCache to be run beforehand
    # for bap_postBlobToPDS
-   bap_preparedImage=/tmp/bash-atproto/$(uuidgen).$cacheimgtype
+   bap_preparedImage=/tmp/idolbot-$(uuidgen).$cacheimgtype
    cp $cachePath/cache.$cacheimgtype $bap_preparedImage
    bap_preparedMime=$cachemime
    # for bap_postImageToBluesky
@@ -267,7 +267,7 @@ function postIdolVideo () {
    checkRefresh
    if [ "$?" != "0" ]; then return 1; fi
    if [ "$directVideoPosting" = "1" ]; then videoUploadCMD=bap_prepareVideoForBluesky; else
-      if [[ $(stat -c %s $1) -gt 50000000 ]]; then iberr 'fatal: video may not exceed 50 mb'; return 1; fi
+      bap_checkVideoForBluesky "$imagepath" || return $?
       videoUploadCMD=bap_postBlobToPDS
       bap_imageWidth=$(exiftool -ImageWidth -s3 $imagepath)
       if ! [ "$?" = "0" ]; then iberr "fatal: exiftool failed!"; return 1; fi

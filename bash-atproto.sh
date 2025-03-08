@@ -282,12 +282,19 @@ function bap_postImageToBluesky () { #1: exception 2: refresh required
    return 0
 }
 
+function bap_checkVideoForBluesky () {
+   if [ ! -f $1 ]; then baperr "error: specify file to check"
+   if [[ $(stat -c %s $1) -gt 100000000 ]]; then baperr 'fatal: video may not exceed 100 mb'; return 1; fi
+   if [ "$(exiftool -duration# -s3 $1 | awk '{print int($1+0.5)}')" -gt "180" ]; then baperr "error: video length must be 3 minutes or less"; return 1; fi
+   return 0
+}
+
 function bap_prepareVideoForBluesky () {
    # stub, will actually talk to bluesky video service in the future
    # $1 is file
    # $2 is mime (like bap_postBlobToPDS)
    if [ -z "$2" ]; then baperr "fatal: Required argument missing"; return 1; fi
-   if [[ $(stat -c %s $1) -gt 50000000 ]]; then baperr 'fatal: video may not exceed 50 mb'; return 1; fi
+   bap_checkVideoForBluesky "$1" || return $?
    bap_postBlobToPDS $1 $2
    if [ "$?" != "0" ]; then baperr "warning: video upload failed"; return 1; fi
    bap_imageWidth=$(exiftool -ImageWidth -s3 $1)
