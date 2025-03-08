@@ -13,15 +13,19 @@ function loadFail () {
 }
 
 function showHelp () {
-   echo "usage: ./idolbot.sh <idol> <command>"
-   echo "commands:"
-   echo "login      - specify a did/handle and app-password to generate secrets"
-   echo "             use --interactive instead of creds to log in interactively"
-   echo "post       - normal behavior to post an image"
-   echo "             append --dry-run to not do anything"
-   echo "             append --no-post to not (re)post but still modify recent queues"
-   echo "repost     - repost another idol bot's post (specify uri and cid)"
-   echo "post-timer - post depending on the last post time (not meant for manual use)"
+   cat <<EOF
+usage: ./idolbot.sh <idol> <command>
+commands:
+login      - specify a did/handle and app-password to generate secrets
+             use --interactive instead of creds to log in interactively
+logout     - close account session and remove secrets file
+             append --force to local delete even if pds is unreachable
+post       - normal behavior to post an image
+             append --dry-run to not do anything
+             append --no-post to not (re)post but still modify recent queues
+repost     - repost another idol bot's post (specify uri and cid)
+post-timer - post depending on the last post time (not meant for manual use)
+EOF
 }
 
 function loadConfig () {
@@ -108,7 +112,7 @@ function interactiveLogin () {
 }
 
 function checkRefresh () {
-   if [ "$(date +%s)" -gt "$(( $savedAccessTimestamp + 5400 ))" ]; then # refresh every 90 minutes
+   if [ "$(date +%s)" -gt "$(( $savedAccessExpiry - 300 ))" ]; then # refresh 5 minutes before expiry
       $iecho "Refreshing tokens"
       bap_refreshKeys
       if ! [ "$?" = "0" ]; then
@@ -178,7 +182,7 @@ function fetchImageCache () {
 function loadCachedImage () {
    # expects fetchImageCache to be run beforehand
    # for bap_postBlobToPDS
-   bap_preparedImage=/tmp/bash-atproto/$(uuidgen).$cacheimgtype
+   bap_preparedImage=/tmp/idolbot-$(uuidgen).$cacheimgtype
    cp $cachePath/cache.$cacheimgtype $bap_preparedImage
    bap_preparedMime=$cachemime
    # for bap_postImageToBluesky
@@ -263,7 +267,7 @@ function postIdolVideo () {
    checkRefresh
    if [ "$?" != "0" ]; then return 1; fi
    if [ "$directVideoPosting" = "1" ]; then videoUploadCMD=bap_prepareVideoForBluesky; else
-      if [[ $(stat -c %s $1) -gt 50000000 ]]; then iberr 'fatal: video may not exceed 50 mb'; return 1; fi
+      bap_checkVideoForBluesky "$imagepath" || return $?
       videoUploadCMD=bap_postBlobToPDS
       bap_imageWidth=$(exiftool -ImageWidth -s3 $imagepath)
       if ! [ "$?" = "0" ]; then iberr "fatal: exiftool failed!"; return 1; fi
@@ -439,8 +443,7 @@ if ! [ -d ./data/$1 ]; then
 
 idol=$1
 iecho="echo $idol:"
-bap_loadSecrets data/$idol/secrets.env
-if ! [ "$?" = "0" ]; then
+if [ ! -f "data/$idol/secrets.env" ]; then
    if ! [ "$2" = "login" ]; then iberr "you need to login first."; exit 1; fi
    if ! [ "$3" = "--interactive" ]; then
       login $3 $4
@@ -449,6 +452,9 @@ if ! [ "$?" = "0" ]; then
    fi
    exit $?
 fi
+bap_loadSecrets data/$idol/secrets.env
+if [ "$?" != "0" ]; then iberr "error loading secrets"; exit 1; fi
+
 if [ "$2" = "login" ]; then
    if [ "$3" = "--force" ]; then
       login $4 $5
@@ -459,10 +465,13 @@ if [ "$2" = "login" ]; then
    fi
 fi
 
-if [ -z "$savedPDS" ]; then
-   bap_findPDS $savedDID
-   if ! [ "$?" = 0 ]; then iberr "PDS lookup failure"; exit 1; fi
+if [ "$2" = "logout" ]; then
+   bap_closeSession > /dev/null
+   if [ "$?" != "0" ] && [ "$3" != "--force" ]; then exit 1; fi
+   rm data/$idol/secrets.env
+   exit $?
 fi
+
 loadConfig data/$idol/idol.txt
 if [ -z "$idolTxtVersion" ] || [ "$idolTxtVersion" -lt "$internalIdolVer" ]; then refreshTxtCfg; fi
 if [ "$2" = "post-timer" ]; then postTimer; fi
