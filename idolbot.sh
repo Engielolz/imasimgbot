@@ -183,7 +183,7 @@ function loadCachedImage () {
    # expects fetchImageCache to be run beforehand
    # for bap_postBlobToPDS
    bap_preparedImage=/tmp/idolbot-$(uuidgen).$cacheimgtype
-   cp $cachePath/cache.$cacheimgtype $bap_preparedImage
+   if [ "$imageCacheStrategy" = "1" ] || [ -z "$bloblink" ]; then cp $cachePath/cache.$cacheimgtype $bap_preparedImage; fi
    bap_preparedMime=$cachemime
    # for bap_postImageToBluesky
    bap_postedMime=$cachemime

@@ -46,7 +46,7 @@ function fetchImageCache () {
 }
 
 function prepImage () {
-   bap_prepareImageForBluesky "$imagepath" >/dev/null 2>&1
+   bap_prepareImageForBluesky "$imagepath" >/dev/null
       if [ "$?" != "0" ]; then
          $printerrcmd "failed to prep image"
          if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
@@ -60,8 +60,8 @@ function saveToImageCache () {
    cachePath=
    if [ "$1" = "sub" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
    if [ -f "$cachePath/cache.txt" ]; then return 0; fi # already cached
+   prepImage || return 1
    mkdir -p $cachePath
-   prepImage
    echo "orighash=$(sha256sum "$imagepath" | awk '{print $1}')" > $cachePath/cache.txt
    echo "cachehash=$(sha256sum $bap_preparedImage | awk '{print $1}')" >> $cachePath/cache.txt
    echo "cacheimgtype=${bap_preparedImage##*.}" >> $cachePath/cache.txt

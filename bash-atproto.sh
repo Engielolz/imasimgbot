@@ -119,7 +119,7 @@ function bap_refreshKeys () {
 }
 
 function bap_closeSession () {
-   if [ -z "$savedAccess" ]; then baperr "need access token to close session"; return 1; fi
+   if [ -z "$savedRefresh" ]; then baperr "need refresh token to close session"; return 1; fi
    bap_result=$(curl --fail-with-body -s -A "$bap_curlUserAgent" -X POST -H "Authorization: Bearer $savedRefresh" "$savedPDS/xrpc/com.atproto.server.deleteSession")
    bapInternal_errorCheck $? bap_closeSession "error: failed to delete session" || return $?
    savedAccess= savedRefresh=
