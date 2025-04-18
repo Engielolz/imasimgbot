@@ -1,6 +1,6 @@
 # iM@S Image Bot
 
-This is a bot powered by bash-atproto that can randomly post images to a number of Bluesky accounts.
+This is a bot powered by bash-atproto that can randomly post images to Bluesky with a number of atproto accounts.
 
 The main use case is to post random images of 765 Production idols.
 
@@ -8,7 +8,7 @@ The main use case is to post random images of 765 Production idols.
 
 ## bash-atproto
 
-Information about bash-atproto is currently in the [765coverbot repo](https://github.com/engielolz/765coverbot).
+bash-atproto resides in [its own repository](https://tangled.sh/@did:plc:s2cyuhd7je7eegffpnurnpud/bash-atproto).
 
 imasimgbot uses all of its functions except postToBluesky.
 
