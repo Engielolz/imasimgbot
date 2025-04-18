@@ -29,11 +29,11 @@ The other dependencies (like uuidgen) should come with your Linux distro.
 
 ## Install
 
-Please see the [quick start guide](docs/qsg.md) for instructions on how to use the bot.
+Please see the [quick start guide](docs/QSG.md) for instructions on how to use the bot.
 
 The bot can be installed with these commands (as root):
 
-1. Go to `/usr/local/bin` and `git clone` this repository
+1. Go to `/usr/local/bin` and `git clone --recurse-submodules` this repository
 
 2. Add your images and set up accounts in ./data. See the [quick start guide](docs/QSG.md) and [structure.md](docs/structure.md) for instructions.
 

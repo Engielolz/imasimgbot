@@ -40,7 +40,7 @@ function postAll () {
    wait
 }
 
-source bash-atproto.sh
+source bash-atproto/bash-atproto.sh
 if ! [ "$?" = "0" ]; then loadFail; fi
 
 if [ "$1" = "--install" ]; then installService; fi

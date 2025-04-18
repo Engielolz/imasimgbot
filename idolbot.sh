@@ -39,7 +39,7 @@ function loadConfig () {
    fi
 }
 
-source ./bash-atproto.sh
+source ./bash-atproto/bash-atproto.sh
 if ! [ "$?" = "0" ]; then loadFail; fi
 bap_curlUserAgent="$bap_curlUserAgent imasimgbot/1.$internalIdolVer-$(git -c safe.directory=$(pwd) describe --always --dirty) (+https://github.com/Engielolz/imasimgbot)"
 
