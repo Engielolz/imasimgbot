@@ -43,6 +43,10 @@ The bot can be installed with these commands (as root):
 
 To uninstall the bot, stop the bot with `systemctl stop imasimgbot` then run the script as root with the parameter `--uninstall` which will disable and remove the service file. Then you can remove the directory `/usr/local/bin/imasimgbot` to fully remove the bot.
 
+## Update
+
+After running the usual `git pull`, you should run `git submodule update` to update bash-atproto. imasimgbot does not verify the bash-atproto version, so you might run into problems if you forget to update.
+
 ## License
 
 This project (including bash-atproto) is licensed under the [MIT License](LICENSE). PRs welcome, but note that this is hobbyist-grade software. imasimgbot is not recommended for use in safety-critical applications like nuclear power plants, weapon control systems or multimillionaire Japanese idol agencies. Well, maybe not that last one...

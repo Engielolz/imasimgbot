@@ -3,11 +3,6 @@
 echo 'iM@S Image Bot'
 echo 'Powered by bash-atproto'
 
-function loadFail () {
-   echo "Required scripts not found!"
-   exit 127
-}
-
 function installService () {
    if ! [[ -d /run/systemd/system ]]; then echo "No systemd detected. Please manage the service manually with your init system."; exit 1; fi
    if ! [ "$1" = "un" ]; then
@@ -39,9 +34,6 @@ function postAll () {
    done
    wait
 }
-
-source bash-atproto/bash-atproto.sh
-if ! [ "$?" = "0" ]; then loadFail; fi
 
 if [ "$1" = "--install" ]; then installService; fi
 if [ "$1" = "--uninstall" ]; then installService un; fi

@@ -102,7 +102,7 @@ function scanSubentries () {
    done
 }
 
-source bash-atproto/bash-atproto.sh
+source bash-atproto/bash-atproto.sh && source bash-atproto/bap-bsky.sh
 if ! [ "$?" = "0" ]; then loadFail; fi
 event=$1
 scan=0
