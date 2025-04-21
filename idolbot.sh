@@ -129,7 +129,7 @@ function repostLogic () {
    checkRefresh
    if [ "$?" != "0" ]; then return 1; fi
    $iecho "Reposting $1 with CID $2"
-   bap_repostToBluesky $1 $2
+   bapBsky_createRepost $1 $2
    if [ "$?" != "0" ]; then
       iberr "Error when trying to repost."
       return 1
@@ -225,35 +225,39 @@ function postIdolPic () {
    fi
    if [ "$imageCaching" = "0" ]; then
       $iecho "preparing image"
-      bap_prepareImageForBluesky $imagepath
+      bapBsky_prepareImage $imagepath
       if [ "$?" != "0" ]; then
          iberr "fatal: image prep failed!"
          if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
          return 1
       fi
    fi
-   if ! [ "$dryrun" = "0" ]; then
-      $iecho "skipping post because --dry-run or --no-post specified"
-      rm $bap_preparedImage
-      return 0
-   fi
-   checkRefresh
-   if [ "$?" != "0" ]; then rm -f $bap_preparedImage; return 1; fi
-   if [ "$imageCacheStrategy" != "2" ] || [ -z "$bloblink" ]; then
-      $iecho "uploading image to pds"
-      bap_postBlobToPDS $bap_preparedImage $bap_preparedMime
-      if [ "$?" != "0" ]; then
-         iberr "fatal: blob posting failed!"
-         if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
-         return 1
+   if ! [ "$dryrun" = "0" ]; then rm $bap_preparedImage; fi
+   if [ "$dryrun" = "0" ]; then
+      checkRefresh
+      if [ "$?" != "0" ]; then rm -f $bap_preparedImage; return 1; fi
+      if [ "$imageCacheStrategy" != "2" ] || [ -z "$bloblink" ]; then
+         $iecho "uploading image to pds"
+         bap_postBlobToPDS $bap_preparedImage $bap_preparedMime
+         if [ "$?" != "0" ]; then
+            iberr "fatal: blob posting failed!"
+            if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
+            return 1
+         fi
+         if [ "$imageCacheStrategy" != "0" ]; then saveToImageCache; fi
+         rm $bap_preparedImage
+      else $iecho "reusing cached blob id"
       fi
-      if [ "$imageCacheStrategy" != "0" ]; then saveToImageCache; fi
-      rm $bap_preparedImage
-   else $iecho "reusing cached blob id"
    fi
    # check preparedMime/postedMime and preparedSize/postedSize
+   if [ "$dryrun" != "0" ] && [ -z "$bap_postedBlob" ]; then bap_postedBlob=dry-run bap_postedMime=$bap_preparedMime bap_postedSize=$bap_preparedSize; fi
    $iecho "posting image"
-   bap_postImageToBluesky $bap_postedBlob $bap_postedMime $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt"
+   bapBsky_cyorInit
+   bapBsky_cyorAddImage 0 $bap_postedBlob $bap_postedMime $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt"
+   if [ ! -z "$text" ]; then bapCYOR_str text "$text"; fi
+   if [ ! -z "$selflabel" ]; then bapBsky_cyorAddLabel 0 $selflabel; fi
+   if [ "$dryrun" != "0" ]; then $iecho "dry-run post JSON: $bap_cyorRecord"; return 0; fi
+   bapBsky_submitPost
    if [ "$?" != "0" ]; then
       iberr "fatal: image posting failed!"
       return 1
@@ -266,8 +270,8 @@ function postIdolPic () {
 function postIdolVideo () {
    checkRefresh
    if [ "$?" != "0" ]; then return 1; fi
-   if [ "$directVideoPosting" = "1" ]; then videoUploadCMD=bap_prepareVideoForBluesky; else
-      bap_checkVideoForBluesky "$imagepath" || return $?
+   if [ "$directVideoPosting" = "1" ]; then videoUploadCMD=bapBsky_prepareVideo; else
+      bapBsky_checkVideo "$imagepath" || return $?
       videoUploadCMD=bap_postBlobToPDS
       bap_imageWidth=$(exiftool -ImageWidth -s3 $imagepath)
       if ! [ "$?" = "0" ]; then iberr "fatal: exiftool failed!"; return 1; fi
@@ -282,7 +286,7 @@ function postIdolVideo () {
    fi
    # check preparedMime/postedMime and preparedSize/postedSize
    $iecho "posting video"
-   bap_postVideoToBluesky $bap_postedBlob $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt"
+   bapBsky_postVideo $bap_postedBlob $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt"
    if [ "$?" != "0" ]; then
       iberr "fatal: video posting failed!"
       return 1
@@ -345,7 +349,7 @@ function iterateSubentries () {
 
 function loadImage () {
    # clean in case there's been failures
-   imgtype= alt= otheridols= subentries= subimage=
+   imgtype= alt= otheridols= subentries= subimage= text= selflabel=
    loadConfig data/$idol/images/$image/info.txt
    if ! [ "$?" = "0" ]; then
       iberr "fatal: the entry data for $image is missing"
@@ -363,11 +367,9 @@ function loadImage () {
    if ! [ -f $imagepath ]; then iberr "fatal: image $imagepath does not exist"; return 1; fi
    $iecho "location: $imagepath"
    $iecho "alt text: $alt"
-   if [ -z "$otheridols" ]; then
-      $iecho "entry does not have other idols"
-   else
-      $iecho "entry has other idols: $otheridols"
-   fi
+   if [ ! -z "$text" ]; then $iecho "entry has post text: $text"; fi
+   if [ ! -z "$selflabel" ]; then $iecho "entry has a self-label: $selflabel"; fi
+   if [ ! -z "$otheridols" ]; then $iecho "entry has other idols: $otheridols"; fi
    return 0
 }
 

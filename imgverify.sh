@@ -46,7 +46,7 @@ function fetchImageCache () {
 }
 
 function prepImage () {
-   bap_prepareImageForBluesky "$imagepath" >/dev/null
+   bapBsky_prepareImage "$imagepath" >/dev/null
       if [ "$?" != "0" ]; then
          $printerrcmd "failed to prep image"
          if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
