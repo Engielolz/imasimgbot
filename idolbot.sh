@@ -236,7 +236,7 @@ function postIdolPic () {
    if [ "$dryrun" = "0" ]; then
       checkRefresh
       if [ "$?" != "0" ]; then rm -f $bap_preparedImage; return 1; fi
-      if [ "$imageCacheStrategy" != "2" ] || [ -z "$bloblink" ]; then
+      if [ "$imageCaching" = "0" ] || [ "$imageCacheStrategy" != "2" ] || [ -z "$bloblink" ]; then
          $iecho "uploading image to pds"
          bap_postBlobToPDS $bap_preparedImage $bap_preparedMime
          if [ "$?" != "0" ]; then
@@ -254,6 +254,8 @@ function postIdolPic () {
    $iecho "posting image"
    bapBsky_cyorInit
    bapBsky_cyorAddImage 0 $bap_postedBlob $bap_postedMime $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt"
+   # this shouldn't fail but exit if it does
+   if [ "$?" != "0" ]; then iberr "fatal: image embed error!"; return 1; fi
    if [ ! -z "$text" ]; then bapCYOR_str text "$text"; fi
    if [ ! -z "$selflabel" ]; then bapBsky_cyorAddLabel 0 $selflabel; fi
    if [ "$dryrun" != "0" ]; then $iecho "dry-run post JSON: $bap_cyorRecord"; return 0; fi
