@@ -84,7 +84,7 @@ function checkImage () {
 }
 
 function scanSubentries () {
-   if ! [ -z "$imgtype" ]; then printerr "subentries do not post like entries"; fi
+   if [ -n "$imgtype" ]; then printerr "subentries do not post like entries"; fi
    if ! [ -f data/$idol/images/$image/subentries.txt ]; then printerr "no subentry list"; return 1; fi
    for i in $(seq 1 $(cat data/$idol/images/$image/subentries.txt | wc -l)); do
       subimage=$(cat data/$idol/images/$image/subentries.txt | sed -n $i'p')
@@ -155,7 +155,7 @@ else
    >&2 echo "$errordata"
 fi
 
-if [ ! -z "$cacheerrordata" ]; then
+if [ -n "$cacheerrordata" ]; then
    if [ "$scan" = "2" ]; then
       >&2 echo "imgverify found errors in the cached files and has regenerated them."
       >&2 echo "No further action is required."

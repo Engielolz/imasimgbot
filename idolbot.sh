@@ -141,7 +141,7 @@ function repostLogic () {
 
 function pickImage () {
    imageNumber=$((1 + $RANDOM % $1 ))
-   echo $(echo "$images" | sed -n $imageNumber'p')
+   echo "$images" | sed -n $imageNumber'p'
    return
 }
 
@@ -256,8 +256,8 @@ function postIdolPic () {
    bapBsky_cyorAddImage 0 $bap_postedBlob $bap_postedMime $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt"
    # this shouldn't fail but exit if it does
    if [ "$?" != "0" ]; then iberr "fatal: image embed error!"; return 1; fi
-   if [ ! -z "$text" ]; then bapCYOR_str text "$text"; fi
-   if [ ! -z "$selflabel" ]; then bapBsky_cyorAddLabel 0 $selflabel; fi
+   if [ -n "$text" ]; then bapCYOR_str text "$text"; fi
+   if [ -n "$selflabel" ]; then bapBsky_cyorAddLabel 0 $selflabel; fi
    if [ "$dryrun" != "0" ]; then $iecho "dry-run post JSON: $bap_cyorRecord"; return 0; fi
    bapBsky_submitPost
    if [ "$?" != "0" ]; then
@@ -369,9 +369,9 @@ function loadImage () {
    if ! [ -f $imagepath ]; then iberr "fatal: image $imagepath does not exist"; return 1; fi
    $iecho "location: $imagepath"
    $iecho "alt text: $alt"
-   if [ ! -z "$text" ]; then $iecho "entry has post text: $text"; fi
-   if [ ! -z "$selflabel" ]; then $iecho "entry has a self-label: $selflabel"; fi
-   if [ ! -z "$otheridols" ]; then $iecho "entry has other idols: $otheridols"; fi
+   if [ -n "$text" ]; then $iecho "entry has post text: $text"; fi
+   if [ -n "$selflabel" ]; then $iecho "entry has a self-label: $selflabel"; fi
+   if [ -n "$otheridols" ]; then $iecho "entry has other idols: $otheridols"; fi
    return 0
 }
 
@@ -388,7 +388,7 @@ function postingLogic () {
    dryrun=0
    if [ "$1" = "--no-post" ]; then dryrun=1; fi
    if [ "$1" = "--dry-run" ]; then dryrun=2; fi
-   if ! [ -z "$imageOverride" ]; then
+   if [ -n "$imageOverride" ]; then
       image=$imageOverride
       $iecho "Using image override"
       loadImage
@@ -434,8 +434,8 @@ function postingLogic () {
       if [ -z "$imageOverride" ]; then incrementRecents data/$idol/$event-recents.txt; fi
       if [ "$subentries" = "1" ]; then incrementRecents data/$idol/images/$image/subentry-recents.txt --subimage; fi
    fi
-   if ! [ -z "$imageOverride" ] && ! [ "$dryrun" = "2" ] && ! [ "$clearImageOverride" = "0" ]; then updateIdolTxt imageOverride; fi
-   if ! [ -z "$otheridols" ];  then
+   if [ -n "$imageOverride" ] && [ "$dryrun" != "2" ] && [ "$clearImageOverride" != "0" ]; then updateIdolTxt imageOverride; fi
+   if [ -n "$otheridols" ];  then
       if [ "$dryrun" = "0" ]; then idolReposting
       else $iecho "not reposting because --dry-run or --no-post specified"; fi
    fi
