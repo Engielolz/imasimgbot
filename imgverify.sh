@@ -33,46 +33,9 @@ function loadConfig () {
    fi
 }
 
-function fetchImageCache () {
-   cachePath=
-   if [ "$1" = "sub" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
-   if [ ! -f "$cachePath/cache.txt" ]; then return 1; fi
-   loadConfig $cachePath/cache.txt
-   if [ ! -f "$cachePath/cache.$cacheimgtype" ]; then printcacheerr "cached image not found"; return 2; fi
-   if [ "$cachehash" != "$(sha256sum $cachePath/cache.$cacheimgtype | awk '{print $1}')" ]; then printcacheerr "hash does not match cached image"; return 2; fi
-   if [ "$orighash" != "$(sha256sum "$imagepath" | awk '{print $1}')" ]; then printcacheerr "hash does not match the image originally cached"; return 2; fi
-   imagepath=$cachePath/cache.$cacheimgtype
-   return 0
-}
-
 function prepImage () {
-   bapBsky_prepareImage "$imagepath" >/dev/null
-      if [ "$?" != "0" ]; then
-         $printerrcmd "failed to prep image"
-         if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
-         return 1
-      fi
-         if [ "$1" = "clear" ]; then rm -f $bap_preparedImage; fi
-}
-
-function saveToImageCache () {
-   if [ "$imgtype" = "mp4" ]; then return 0; fi
-   cachePath=
-   if [ "$1" = "sub" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
-   if [ -f "$cachePath/cache.txt" ]; then return 0; fi # already cached
-   prepImage || return 1
-   mkdir -p $cachePath
-   echo "orighash=$(sha256sum "$imagepath" | awk '{print $1}')" > $cachePath/cache.txt
-   echo "cachehash=$(sha256sum $bap_preparedImage | awk '{print $1}')" >> $cachePath/cache.txt
-   echo "cacheimgtype=${bap_preparedImage##*.}" >> $cachePath/cache.txt
-   echo "cachemime=$bap_preparedMime" >> $cachePath/cache.txt
-   echo "cachesize=$bap_preparedSize" >> $cachePath/cache.txt
-   echo "cachewidth=$bap_imageWidth" >> $cachePath/cache.txt
-   echo "cacheheight=$bap_imageHeight" >> $cachePath/cache.txt
-   echo "bloblink=$bap_postedBlob" >> $cachePath/cache.txt
-   cp -f $bap_preparedImage $cachePath/cache.${bap_preparedImage##*.}
-   bloblink=$bap_postedBlob # don't run sed after image upload
-   rm -f $bap_preparedImage 2> /dev/null
+   bapBsky_prepareImage "$imagepath" >/dev/null || { $printerrcmd "failed to prep image"; if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi; return 1; }
+   if [ "$1" = "clear" ]; then rm -f $bap_preparedImage; fi
 }
 
 function checkImage () {
@@ -91,19 +54,23 @@ function scanSubentries () {
       echo Checking subentry $subimage
       imgtype=
       subentries=
-      loadConfig data/$idol/images/$image/$subimage/info.txt
-      if ! [ "$?" = "0" ]; then printsuberr "no subentry data"; continue; fi
+      loadConfig data/$idol/images/$image/$subimage/info.txt || { printsuberr "no subentry data"; continue; }
       if [ "$subentries" = "1" ]; then printsuberr "nested subentry not supported"; fi
       imagepath=data/$idol/images/$image/$subimage/image.$imgtype
-      checkImage sub $(if [ "$scan" = "1" ]; then echo "--scan"; fi)
-      if [ "$?" != "0" ]; then continue; fi
-      if [ "$cacheverify" = "1" ] && ! [ "$imgtype" = "mp4" ]; then fetchImageCache sub; if [ "$?" = "2" ]; then rm -r $cachePath; fi; fi
-      if [ "$scan" = "2" ]; then saveToImageCache sub; fi
+      checkImage sub $(if [ "$scan" = "1" ]; then echo "--scan"; fi) || continue
+      if [ "$cacheverify" = "1" ] && ! [ "$imgtype" = "mp4" ]; then subentries=1 fetchImageCache; if [ "$?" = "2" ]; then rm -r $cachePath; fi; fi
+      if [ "$scan" = "2" ]; then
+         if [ "$imgtype" = "mp4" ]; then continue; fi
+         prepImage || continue
+         subentries=1 saveToImageCache
+         rm -f $bap_preparedImage 2> /dev/null
+      fi
    done
 }
 
-source bash-atproto/bash-atproto.sh && source bash-atproto/bap-bsky.sh
-if ! [ "$?" = "0" ]; then loadFail; fi
+source bash-atproto/bash-atproto.sh && source bash-atproto/bap-bsky.sh && source imgcache.sh || loadFail
+if [ "$bap_internalVersion" != "3" ] || ! [ "$bap_internalMinorVer" -ge "0" ]; then >&2 echo "Incorrect bash-atproto version"; return 1; fi
+if [ "$bapBsky_internalVersion" != "1" ] || ! [ "$bapBsky_internalMinorVer" -ge "0" ]; then >&2 echo "Incorrect bap-bsky version"; return 1; fi
 event=$1
 scan=0
 errordata=
@@ -137,15 +104,18 @@ for i in $(seq 1 $(cat data/idols.txt | wc -l)); do
       echo Checking entry $image
       imgtype=
       subentries=
-      loadConfig data/$idol/images/$image/info.txt
-      if ! [ "$?" = "0" ]; then printerr "no entry data"; continue; fi
+      loadConfig data/$idol/images/$image/info.txt || { printerr "no entry data"; continue; }
       if [ "$subentries" = "1" ]; then scanSubentries; continue; fi
       if [ -f data/$idol/images/$image/subentries.txt ]; then printerr "subentries detected but not enabled (overwrite info.txt with subentries=1)"; fi
       imagepath="data/$idol/images/$image/image.$imgtype"
-      checkImage main $(if [ "$scan" = "1" ]; then echo "--scan"; fi)
-      if [ "$?" != "0" ]; then continue; fi
+      checkImage main $(if [ "$scan" = "1" ]; then echo "--scan"; fi) || continue
       if [ "$cacheverify" = "1" ] && ! [ "$imgtype" = "mp4" ]; then fetchImageCache; if [ "$?" = "2" ]; then rm -r $cachePath; fi; fi
-      if [ "$scan" = "2" ]; then saveToImageCache; fi
+      if [ "$scan" = "2" ]; then
+         if [ "$imgtype" = "mp4" ]; then continue; fi
+         prepImage || continue
+         saveToImageCache
+         rm -f $bap_preparedImage 2> /dev/null
+      fi
    done
 done
 

@@ -3,8 +3,12 @@
 internalIdolVer=4
 svcInterval=900 # must match postInterval in imasimgbot.sh
 
+function ibecho () {
+   echo $idol: $*
+}
+
 function iberr () {
-   >&2 $iecho $*
+   >&2 ibecho $*
 }
 
 function loadFail () {
@@ -39,15 +43,16 @@ function loadConfig () {
    fi
 }
 
-source ./bash-atproto/bash-atproto.sh && source ./bash-atproto/bap-bsky.sh
-if ! [ "$?" = "0" ]; then loadFail; fi
+source ./bash-atproto/bash-atproto.sh && source ./bash-atproto/bap-bsky.sh && source imgcache.sh || loadFail
+if [ "$bap_internalVersion" != "3" ] || ! [ "$bap_internalMinorVer" -ge "0" ]; then >&2 echo "Incorrect bash-atproto version"; return 1; fi
+if [ "$bapBsky_internalVersion" != "1" ] || ! [ "$bapBsky_internalMinorVer" -ge "0" ]; then >&2 echo "Incorrect bap-bsky version"; return 1; fi
 bap_curlUserAgent="$bap_curlUserAgent imasimgbot/1.$internalIdolVer-$(git -c safe.directory=$(pwd) describe --always --dirty) (+https://github.com/Engielolz/imasimgbot)"
 
 # Check params
 if [ -z "$1" ] || [ "$1" = "--help" ]; then showHelp; exit 1; fi
 
 function refreshTxtCfg () {
-   $iecho "updating idol.txt to new version"
+   ibecho "updating idol.txt to new version"
    if [ -z "$postInterval" ]; then postInterval=4; fi
    if [ -z "$globalQueueSize" ]; then globalQueueSize=48; fi
    if [ -z "$clearImageOverride" ]; then clearImageOverride=1; fi
@@ -80,63 +85,75 @@ imageCacheLocation=$imageCacheLocation
 EOF
 }
 
+function sedTest () {
+   # Is this GNU sed?
+   if sed --help | grep "GNU" > /dev/null; then echo '0'
+   # Do we have ed?
+   elif command -v ed > /dev/null; then echo '1'
+   # Use sed with diff-patch
+   else echo '2'
+   fi
+}
+
+function repText () {
+   case "$(sedTest)" in
+      0) sed -i "$1" $2; return $?;;
+      1) echo ",$1; w" | tr \; '\012' | ed -s $2; return $?;;
+      2) sed "$1" "$2" | diff -p "$2" | patch > /dev/null; return $?;;
+   esac
+}
+
+function preText () {
+   case "$(sedTest)" in
+      0) sed -i "1s/^/$1\n/" $2; return $?;;
+      1) printf '0a\n%s\n.\nw\n' "$1" | ed -s $2; return $?;;
+      2) sed "1s/^/$1\n/" "$2" | diff -p "$2" | patch > /dev/null; return $?;;
+   esac
+}
+
+function truText () {
+   case "$(sedTest)" in
+      0) sed -i "$1,$ d" $2; return $?;;
+      1) printf '%s,$d\nwq\n' "$1" | ed -s $2 > /dev/null; return $?;;
+      2) sed "$1,$ d" "$2" | diff -p "$2" | patch > /dev/null; return $?;;
+   esac
+}
+
 function updateIdolTxt () {
-   sed -i "s/$1=${!1}/$1=$2/g" data/$idol/idol.txt
+   repText "s/$1=${!1}/$1=$2/g" "data/$idol/idol.txt"
 }
 
 function login () {
    if [ -z "$2" ]; then iberr "login params not specified"; return 1; fi
-   bap_didInit $1
-   if ! [ "$?" = "0" ]; then iberr "did init failure"; return 1; fi
-   bap_findPDS $savedDID
-   if ! [ "$?" = "0" ]; then iberr "failed to resolve PDS"; return 1; fi
-   bap_getKeys $savedDID $2
-   if ! [ "$?" = "0" ]; then iberr "failed to log in"; return 1; fi
+   bap_didInit $1 || { iberr "did init failure"; return 1; }
+   bap_findPDS $savedDID || { iberr "failed to resolve PDS"; return 1; }
+   bap_getKeys $savedDID $2 || { iberr "failed to log in"; return 1; }
    bap_saveSecrets ./data/$idol/secrets.env
    return 0
 }
 
 function interactiveLogin () {
+   local handle apppassword
    read -p "$idol: Handle: " handle
    read -sp "$idol: App Password: " apppassword
-   echo
-   bap_didInit $handle
-   if ! [ "$?" = "0" ]; then iberr "did init failure"; return 1; fi
-   bap_findPDS $savedDID
-   if ! [ "$?" = "0" ]; then iberr "failed to resolve PDS"; return 1; fi
-   bap_getKeys $savedDID $apppassword
-   if ! [ "$?" = "0" ]; then iberr "failed to log in"; return 1; fi
-   bap_saveSecrets ./data/$idol/secrets.env
-   apppassword=
-   return 0
+   login $handle "$apppassword"
+   return $?
 }
 
 function checkRefresh () {
    if [ "$(date +%s)" -gt "$(( $savedAccessExpiry - 300 ))" ]; then # refresh 5 minutes before expiry
-      $iecho "Refreshing tokens"
-      bap_refreshKeys
-      if ! [ "$?" = "0" ]; then
-         iberr "fatal: refresh error"
-         return 1
-      fi
+      ibecho "Refreshing tokens"
+      bap_refreshKeys || { iberr "fatal: refresh error"; return 1; }
       bap_saveSecrets data/$idol/secrets.env
       return 0
    fi
 }
 
 function repostLogic () {
-   $iecho "Going to repost."
-   checkRefresh
-   if [ "$?" != "0" ]; then return 1; fi
-   $iecho "Reposting $1 with CID $2"
-   bapBsky_createRepost $1 $2
-   if [ "$?" != "0" ]; then
-      iberr "Error when trying to repost."
-      return 1
-   else
-      $iecho "Repost succeeded."
-      return 0
-   fi
+   ibecho "Going to repost."
+   checkRefresh || return $?
+   ibecho "Reposting $1 with CID $2"
+   bapBsky_createRepost $1 $2 && ibecho "Repost succeeded." || { iberr "Error when trying to repost."; return 1; }
 }
 
 function pickImage () {
@@ -147,66 +164,25 @@ function pickImage () {
 
 function incrementRecents () {
    if ! [ -s $1 ]; then echo "" > $1; fi
-   if [ "$2" = "--subimage" ]; then sed -i "1s/^/$subimage\n/" $1; else sed -i "1s/^/$image\n/" $1; fi
+   if [ "$2" = "--subimage" ]; then preText "$subimage" $1; else preText "$image" $1; fi
    return 0
 }
 
 function incrementGlobalRecents () {
    if ! [ -s data/$idol/recents.txt ]; then echo "" > data/$idol/recents.txt; fi
-   sed -i "1s/^/$image\n/" data/$idol/recents.txt
+   preText "$image" data/$idol/recents.txt
    if [ -z "$globalQueueSize" ]; then globalQueueSize=24; fi
    ((globalQueueSize+=1))
-   sed -i "$globalQueueSize,$ d" data/$idol/recents.txt
+   truText "$globalQueueSize" data/$idol/recents.txt
    return 0
 }
 
 function idolReposting () {
-   $iecho "reposting for idols $otheridols"
+   ibecho "reposting for idols $otheridols"
    echo $otheridols | tr ',' '\n' | while read ridol; do
       env -i $0 $ridol repost $uri $cid
    done
    return 0
-}
-
-function fetchImageCache () {
-   if [ "$subentries" = "1" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
-   if [ ! -f "$cachePath/cache.txt" ]; then return 1; fi
-   loadConfig $cachePath/cache.txt
-   if [ ! -f "$cachePath/cache.$cacheimgtype" ]; then iberr "cached image not found"; return 2; fi
-   if [ "$cachehash" != "$(sha256sum $cachePath/cache.$cacheimgtype | awk '{print $1}')" ]; then iberr "hash does not match cached image"; return 2; fi
-   if [ "$orighash" != "$(sha256sum $imagepath | awk '{print $1}')" ]; then iberr "hash does not match the image originally cached"; return 2; fi
-   imagepath=$cachePath/cache.$cacheimgtype
-   return 0
-}
-
-function loadCachedImage () {
-   # expects fetchImageCache to be run beforehand
-   # for bap_postBlobToPDS
-   bap_preparedImage=/tmp/idolbot-$(uuidgen).$cacheimgtype
-   if [ "$imageCacheStrategy" = "1" ] || [ -z "$bloblink" ]; then cp $cachePath/cache.$cacheimgtype $bap_preparedImage; fi
-   bap_preparedMime=$cachemime
-   # for bap_postImageToBluesky
-   bap_postedMime=$cachemime
-   bap_postedBlob=$bloblink
-   bap_postedSize=$cachesize
-   bap_imageWidth=$cachewidth
-   bap_imageHeight=$cacheheight
-}
-
-function saveToImageCache () {
-   if [ "$subentries" = "1" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
-   if [ -f "$cachePath/cache.txt" ] && [ "$1" != "--force" ]; then return 0; fi # already cached
-   mkdir -p $cachePath
-   echo "orighash=$(sha256sum $imagepath | awk '{print $1}')" > $cachePath/cache.txt
-   echo "cachehash=$(sha256sum $bap_preparedImage | awk '{print $1}')" >> $cachePath/cache.txt
-   echo "cacheimgtype=${bap_preparedImage##*.}" >> $cachePath/cache.txt
-   echo "cachemime=$bap_postedMime" >> $cachePath/cache.txt
-   echo "cachesize=$bap_postedSize" >> $cachePath/cache.txt
-   echo "cachewidth=$bap_imageWidth" >> $cachePath/cache.txt
-   echo "cacheheight=$bap_imageHeight" >> $cachePath/cache.txt
-   echo "bloblink=$bap_postedBlob" >> $cachePath/cache.txt
-   cp -f $bap_preparedImage $cachePath/cache.${bap_preparedImage##*.}
-   bloblink=$bap_postedBlob # don't run sed after image upload
 }
 
 function postIdolPic () {
@@ -217,83 +193,56 @@ function postIdolPic () {
          0)
          imageCaching=1
          loadCachedImage
-         $iecho "using cached image";;
+         ibecho "using cached image";;
          2)
          iberr "cached image data invalid, purging"
          rm -r $cachePath;;
       esac
    fi
    if [ "$imageCaching" = "0" ]; then
-      $iecho "preparing image"
-      bapBsky_prepareImage $imagepath
-      if [ "$?" != "0" ]; then
-         iberr "fatal: image prep failed!"
-         if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
-         return 1
-      fi
+      ibecho "preparing image"
+      bapBsky_prepareImage $imagepath || { iberr "fatal: image prep failed"; if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi; return 1; }
    fi
    if ! [ "$dryrun" = "0" ]; then rm $bap_preparedImage; fi
    if [ "$dryrun" = "0" ]; then
-      checkRefresh
-      if [ "$?" != "0" ]; then rm -f $bap_preparedImage; return 1; fi
+      checkRefresh || { rm -f $bap_preparedImage; return 1; }
       if [ "$imageCaching" = "0" ] || [ "$imageCacheStrategy" != "2" ] || [ -z "$bloblink" ]; then
-         $iecho "uploading image to pds"
-         bap_postBlobToPDS $bap_preparedImage $bap_preparedMime
-         if [ "$?" != "0" ]; then
-            iberr "fatal: blob posting failed!"
-            if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi
-            return 1
-         fi
+         ibecho "uploading image to pds"
+         bap_postBlobToPDS $bap_preparedImage $bap_preparedMime || { iberr "fatal: blob posting failed!"; if [ -f $bap_preparedImage ]; then rm -f $bap_preparedImage; fi; return 1; }
          if [ "$imageCacheStrategy" != "0" ]; then saveToImageCache; fi
          rm $bap_preparedImage
-      else $iecho "reusing cached blob id"
+      else ibecho "reusing cached blob id"
       fi
    fi
    # check preparedMime/postedMime and preparedSize/postedSize
    if [ "$dryrun" != "0" ] && [ -z "$bap_postedBlob" ]; then bap_postedBlob=dry-run bap_postedMime=$bap_preparedMime bap_postedSize=$bap_preparedSize; fi
-   $iecho "posting image"
+   ibecho "posting image"
    bapBsky_cyorInit
-   bapBsky_cyorAddImage 0 $bap_postedBlob $bap_postedMime $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt"
    # this shouldn't fail but exit if it does
-   if [ "$?" != "0" ]; then iberr "fatal: image embed error!"; return 1; fi
+   bapBsky_cyorAddImage 0 $bap_postedBlob $bap_postedMime $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt" || { iberr "fatal: image embed error!"; return 1; }
    if [ -n "$text" ]; then bapCYOR_str text "$text"; fi
    if [ -n "$selflabel" ]; then bapBsky_cyorAddLabel 0 $selflabel; fi
-   if [ "$dryrun" != "0" ]; then $iecho "dry-run post JSON: $bap_cyorRecord"; return 0; fi
-   bapBsky_submitPost
-   if [ "$?" != "0" ]; then
-      iberr "fatal: image posting failed!"
-      return 1
-   fi
-   $iecho "image upload SUCCESS"
-   if [ "$imageCacheStrategy" != "0" ] && [ -z "$bloblink" ]; then sed -i "s/bloblink=/bloblink=$bap_postedBlob/g" $cachePath/cache.txt; fi
+   if [ "$dryrun" != "0" ]; then ibecho "dry-run post JSON: $bap_cyorRecord"; return 0; fi
+   bapBsky_submitPost || { iberr "fatal: image posting failed!"; return 1; }
+   ibecho "image upload SUCCESS"
+   if [ "$imageCacheStrategy" != "0" ] && [ -z "$bloblink" ]; then repText "s/bloblink=/bloblink=$bap_postedBlob/g" "$cachePath/cache.txt"; fi
    return 0
 }
 
 function postIdolVideo () {
-   checkRefresh
-   if [ "$?" != "0" ]; then return 1; fi
+   checkRefresh || return $?
    if [ "$directVideoPosting" = "1" ]; then videoUploadCMD=bapBsky_prepareVideo; else
       bapBsky_checkVideo "$imagepath" || return $?
       videoUploadCMD=bap_postBlobToPDS
-      bap_imageWidth=$(exiftool -ImageWidth -s3 $imagepath)
-      if ! [ "$?" = "0" ]; then iberr "fatal: exiftool failed!"; return 1; fi
-      bap_imageHeight=$(exiftool -ImageHeight -s3 $imagepath)
-      if ! [ "$?" = "0" ]; then iberr "fatal: exiftool failed!"; return 1; fi
+      bap_imageWidth=$(exiftool -ImageWidth -s3 $imagepath) || { iberr "fatal: exiftool failed!"; return 1; }
+      bap_imageHeight=$(exiftool -ImageHeight -s3 $imagepath) || { iberr "fatal: exiftool failed!"; return 1; }
    fi
-   $iecho "uploading video to pds"
-   $videoUploadCMD $imagepath "video/mp4"
-   if [ "$?" != "0" ]; then
-      iberr "fatal: video upload failed!"
-      return 1
-   fi
+   ibecho "uploading video to pds"
+   $videoUploadCMD $imagepath "video/mp4" || { iberr "fatal: video upload failed!"; return 1; }
    # check preparedMime/postedMime and preparedSize/postedSize
-   $iecho "posting video"
-   bapBsky_postVideo $bap_postedBlob $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt"
-   if [ "$?" != "0" ]; then
-      iberr "fatal: video posting failed!"
-      return 1
-   fi
-   $iecho "video upload SUCCESS (may take time to process)"
+   ibecho "posting video"
+   bapBsky_postVideo $bap_postedBlob $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt" || { iberr "fatal: video posting failed!"; return 1; }
+   ibecho "video upload SUCCESS (may take time to process)"
    return 0
 }
 
@@ -323,7 +272,7 @@ function eventHandler () {
 function checkImage () {
    images=$(grep -xvf data/$idol/recents.txt -f data/$idol/$event-recents.txt data/$idol/images/$event.txt)
    if [ -z "$images" ]; then
-      $iecho "resetting recents queue for $event"
+      ibecho "resetting recents queue for $event"
       echo > data/$idol/$event-recents.txt
       images=$(grep -xvf data/$idol/recents.txt -f data/$idol/$event-recents.txt data/$idol/images/$event.txt)
    fi
@@ -334,52 +283,49 @@ function checkImage () {
    fi
    if [ -z "$images" ]; then iberr "error: no valid image entries"; return 1; fi
    image=$(pickImage $(echo "$images" | wc -l))
-   $iecho "picked entry $image"
+   ibecho "picked entry $image"
 }
 
 function iterateSubentries () {
    images=$(grep -xvf data/$idol/images/$image/subentry-recents.txt data/$idol/images/$image/subentries.txt)
    if [ -z "$images" ]; then
-      $iecho "resetting subentry recents queue for $image"
+      ibecho "resetting subentry recents queue for $image"
       echo > data/$idol/images/$image/subentry-recents.txt
       images=$(grep -xvf data/$idol/images/$image/subentry-recents.txt data/$idol/images/$image/subentries.txt)
    fi
    if [ -z "$images" ]; then iberr "error: no valid image subentries"; return 1; fi
    subimage=$(pickImage $(echo "$images" | wc -l))
-   $iecho "picked subentry $subimage"
+   ibecho "picked subentry $subimage"
 }
 
 function loadImage () {
    # clean in case there's been failures
    imgtype= alt= otheridols= subentries= subimage= text= selflabel=
-   loadConfig data/$idol/images/$image/info.txt
-   if ! [ "$?" = "0" ]; then
+   loadConfig data/$idol/images/$image/info.txt || {
       iberr "fatal: the entry data for $image is missing"
       iberr "hint: if the above line is broken, it may be encoded in windows format"
       return 1
-   fi
+   }
    if [ "$subentries" = "1" ]; then
       iterateSubentries
-      loadConfig data/$idol/images/$image/$subimage/info.txt
-      if ! [ "$?" = 0 ]; then iberr "error reading data for $subimage"; return 1; fi
+      loadConfig data/$idol/images/$image/$subimage/info.txt || { iberr "error reading data for $subimage"; return 1; }
       imagepath=data/$idol/images/$image/$subimage/image.$imgtype
    else
       imagepath=data/$idol/images/$image/image.$imgtype
    fi
    if ! [ -f $imagepath ]; then iberr "fatal: image $imagepath does not exist"; return 1; fi
-   $iecho "location: $imagepath"
-   $iecho "alt text: $alt"
-   if [ -n "$text" ]; then $iecho "entry has post text: $text"; fi
-   if [ -n "$selflabel" ]; then $iecho "entry has a self-label: $selflabel"; fi
-   if [ -n "$otheridols" ]; then $iecho "entry has other idols: $otheridols"; fi
+   ibecho "location: $imagepath"
+   ibecho "alt text: $alt"
+   if [ -n "$text" ]; then ibecho "entry has post text: $text"; fi
+   if [ -n "$selflabel" ]; then ibecho "entry has a self-label: $selflabel"; fi
+   if [ -n "$otheridols" ]; then ibecho "entry has other idols: $otheridols"; fi
    return 0
 }
 
 function postTimer () {
    # if not next post time, return and do nothing
    if [ "$nextPostTime" -gt "$(date +%s)" ]; then return 0; fi
-   postingLogic
-   if ! [ "$?" = "0" ]; then return 1; fi
+   postingLogic || return $?
    updateIdolTxt nextPostTime $(($(date +%s) + (($postInterval * $svcInterval) - $(date +%s) % ($postInterval * $svcInterval))))
    return 0;
 }
@@ -390,46 +336,36 @@ function postingLogic () {
    if [ "$1" = "--dry-run" ]; then dryrun=2; fi
    if [ -n "$imageOverride" ]; then
       image=$imageOverride
-      $iecho "Using image override"
-      loadImage
-      if ! [ "$?" = "0" ]; then
+      ibecho "Using image override"
+      loadImage || {
          iberr "fatal: the image override cannot be used"
-         sed -i "s/imageOverride=$imageOverride/imageOverride=/g" data/$idol/idol.txt
+         repText "s/imageOverride=$imageOverride/imageOverride=/g" "data/$idol/idol.txt"
          return 1
-      fi
+      }
    else
       eventHandler
       if ! [ -f data/$idol/$event-recents.txt ]; then touch data/$idol/$event-recents.txt; fi
-      $iecho "Event: $event"
+      ibecho "Event: $event"
       while :
       do
          checkImage
-         loadImage
-         if [ "$?" = "0" ]; then break; fi
+         loadImage && break
          ((imageRetries+=1))
          if [ "$imageRetries" = "10" ]; then iberr "fatal: image retry limit reached"; return 1; fi
          iberr "warning: trying another image ($imageRetries/10)..."
       done
    fi
    if ! [ "$imgtype" = "mp4" ]; then
-      postIdolPic
-      if [ "$?" != "0" ]; then
-         iberr "fatal: failed to post image!"
-         return 1
-      fi
+      postIdolPic || { iberr "fatal: failed to post image!"; return 1; }
    else
       if [ "$dryrun" = "0" ]; then
-         postIdolVideo
-         if [ "$?" != "0" ]; then
-            iberr "fatal: failed to post video!"
-            return 1
-         fi
+         postIdolVideo || { iberr "fatal: failed to post video!"; return 1; }
       else
-         $iecho "skipping post because --dry-run or --no-post specified"
+         ibecho "skipping post because --dry-run or --no-post specified"
       fi
    fi
    if ! [ "$dryrun" = "2" ]; then
-      $iecho "adding image to recents"
+      ibecho "adding image to recents"
       incrementGlobalRecents
       if [ -z "$imageOverride" ]; then incrementRecents data/$idol/$event-recents.txt; fi
       if [ "$subentries" = "1" ]; then incrementRecents data/$idol/images/$image/subentry-recents.txt --subimage; fi
@@ -437,7 +373,7 @@ function postingLogic () {
    if [ -n "$imageOverride" ] && [ "$dryrun" != "2" ] && [ "$clearImageOverride" != "0" ]; then updateIdolTxt imageOverride; fi
    if [ -n "$otheridols" ];  then
       if [ "$dryrun" = "0" ]; then idolReposting
-      else $iecho "not reposting because --dry-run or --no-post specified"; fi
+      else ibecho "not reposting because --dry-run or --no-post specified"; fi
    fi
    return 0
 }
@@ -446,7 +382,7 @@ if ! [ -d ./data/$1 ]; then
    >&2 echo "idolbot: No such idol: $1"; exit 1; fi
 
 idol=$1
-iecho="echo $idol:"
+
 if [ ! -f "data/$idol/secrets.env" ]; then
    if ! [ "$2" = "login" ]; then iberr "you need to login first."; exit 1; fi
    if ! [ "$3" = "--interactive" ]; then
@@ -456,8 +392,7 @@ if [ ! -f "data/$idol/secrets.env" ]; then
    fi
    exit $?
 fi
-bap_loadSecrets data/$idol/secrets.env
-if [ "$?" != "0" ]; then iberr "error loading secrets"; exit 1; fi
+bap_loadSecrets data/$idol/secrets.env || { iberr "error loading secrets"; exit 1; }
 
 if [ "$2" = "login" ]; then
    if [ "$3" = "--force" ]; then
@@ -470,8 +405,7 @@ if [ "$2" = "login" ]; then
 fi
 
 if [ "$2" = "logout" ]; then
-   bap_closeSession > /dev/null
-   if [ "$?" != "0" ] && [ "$3" != "--force" ]; then exit 1; fi
+   bap_closeSession > /dev/null || if [ "$3" != "--force" ]; then exit 1; fi
    rm data/$idol/secrets.env
    exit $?
 fi

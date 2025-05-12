@@ -1,31 +1,12 @@
 # iM@S Image Bot
 
-This is a bot powered by bash-atproto that can randomly post images to Bluesky with a number of atproto accounts.
+This is a bot powered by [bash-atproto](https://tangled.sh/@did:plc:s2cyuhd7je7eegffpnurnpud/bash-atproto) that can randomly post images to Bluesky with a number of atproto accounts.
 
 The main use case is to post random images of 765 Production idols.
 
-**NOTE:** This script will not work properly on macOS due to using `sed -i`.
+## Dependencies
 
-## bash-atproto
-
-bash-atproto resides in [its own repository](https://tangled.sh/@did:plc:s2cyuhd7je7eegffpnurnpud/bash-atproto).
-
-imasimgbot uses all of its functions except postToBluesky.
-
-### Dependencies
-
-bash-atproto needs, at minimum:
-
-* `curl` 7.76.0 or later.
-
-* `jq`
-
-Posting images (required by imasimgbot) additionally requires:
-
-* imagemagick (`convert` and `identify`)
-* `exiftool`
-
-The other dependencies (like uuidgen) should come with your Linux distro.
+There are no further requirements beyond meeting the requirements of bash-atproto.
 
 ## Install
 
@@ -45,7 +26,7 @@ To uninstall the bot, stop the bot with `systemctl stop imasimgbot` then run the
 
 ## Update
 
-After running the usual `git pull`, you should run `git submodule update` to update bash-atproto. imasimgbot does not verify the bash-atproto version, so you might run into problems if you forget to update.
+After running the usual `git pull`, you should run `git submodule update` to update bash-atproto. imasimgbot will throw errors if it needs a newer bash-atproto.
 
 ## License
 
