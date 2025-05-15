@@ -1,7 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
-internalIdolVer=4
-svcInterval=900 # must match postInterval in imasimgbot.sh
+internalIdolVer=5
 
 function ibecho () {
    echo $idol: $*
@@ -44,8 +43,8 @@ function loadConfig () {
 }
 
 source ./bash-atproto/bash-atproto.sh && source ./bash-atproto/bap-bsky.sh && source imgcache.sh || loadFail
-if [ "$bap_internalVersion" != "3" ] || ! [ "$bap_internalMinorVer" -ge "0" ]; then >&2 echo "Incorrect bash-atproto version"; return 1; fi
-if [ "$bapBsky_internalVersion" != "1" ] || ! [ "$bapBsky_internalMinorVer" -ge "0" ]; then >&2 echo "Incorrect bap-bsky version"; return 1; fi
+if [ "$bap_internalVersion" != "3" ] || ! [ "$bap_internalMinorVer" -ge "3" ]; then >&2 echo "Incorrect bash-atproto version"; exit 1; fi
+if [ "$bapBsky_internalVersion" != "1" ] || ! [ "$bapBsky_internalMinorVer" -ge "2" ]; then >&2 echo "Incorrect bap-bsky version"; exit 1; fi
 bap_curlUserAgent="$bap_curlUserAgent imasimgbot/1.$internalIdolVer-$(git -c safe.directory=$(pwd) describe --always --dirty) (+https://github.com/Engielolz/imasimgbot)"
 
 # Check params
@@ -53,9 +52,11 @@ if [ -z "$1" ] || [ "$1" = "--help" ]; then showHelp; exit 1; fi
 
 function refreshTxtCfg () {
    ibecho "updating idol.txt to new version"
-   if [ -z "$postInterval" ]; then postInterval=4; fi
-   if [ -z "$globalQueueSize" ]; then globalQueueSize=48; fi
    if [ -z "$clearImageOverride" ]; then clearImageOverride=1; fi
+   if [ -z "$randomEventChance" ]; then randomEventChance=0; fi
+   if [ -z "$postInterval" ]; then postInterval=4; fi
+   if [ -z "$bdayInterval" ]; then bdayInterval=2; fi
+   if [ -z "$globalQueueSize" ]; then globalQueueSize=48; fi
    if [ -z "$directVideoPosting" ]; then directVideoPosting=0; fi
    if [ -z "$imageCacheStrategy" ]; then imageCacheStrategy=0; fi
    if [ -z "$imageCacheLocation" ]; then imageCacheLocation=./data/$idol/cache; fi
@@ -69,14 +70,21 @@ nextPostTime=$nextPostTime
 imageOverride=$imageOverride
 # Set this to 0 to always post the override (otherwise it's posted only once)
 clearImageOverride=$clearImageOverride
+# 1 in # chance to post from the random event
+randomEventChance=$randomEventChance
+# The random event
+randomEventName=$randomEventName
 
-# Date to run the birthday event (MMDD, always in JST)
-birthday=$birthday
 # Post every # runs (one run is by default 15 minutes)
 postInterval=$postInterval
+# Date to run the birthday event (MMDD, always in JST)
+birthday=$birthday
+# postInterval on birthdays
+bdayInterval=$bdayInterval
+
 # The # latest used images will not be posted. Set to 0 to disable
 globalQueueSize=$globalQueueSize
-# If 1, post video via Bluesky instead of to PDS
+# If 1, post video via Lumi instead of to PDS
 directVideoPosting=$directVideoPosting
 # Set to 1 to use image caching or blob IDs with 2. Set to 0 to disable
 imageCacheStrategy=$imageCacheStrategy
@@ -221,7 +229,7 @@ function postIdolPic () {
    # this shouldn't fail but exit if it does
    bapBsky_cyorAddImage 0 $bap_postedBlob $bap_postedMime $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt" || { iberr "fatal: image embed error!"; return 1; }
    if [ -n "$text" ]; then bapCYOR_str text "$text"; fi
-   if [ -n "$selflabel" ]; then bapBsky_cyorAddLabel 0 $selflabel; fi
+   if [ -n "$selflabel" ]; then bapBsky_cyorAddSelfLabels $(echo $selflabel | tr ',' ' '); fi
    if [ "$dryrun" != "0" ]; then ibecho "dry-run post JSON: $bap_cyorRecord"; return 0; fi
    bapBsky_submitPost || { iberr "fatal: image posting failed!"; return 1; }
    ibecho "image upload SUCCESS"
@@ -237,36 +245,36 @@ function postIdolVideo () {
       bap_imageWidth=$(exiftool -ImageWidth -s3 $imagepath) || { iberr "fatal: exiftool failed!"; return 1; }
       bap_imageHeight=$(exiftool -ImageHeight -s3 $imagepath) || { iberr "fatal: exiftool failed!"; return 1; }
    fi
-   ibecho "uploading video to pds"
+   ibecho "uploading video"
    $videoUploadCMD $imagepath "video/mp4" || { iberr "fatal: video upload failed!"; return 1; }
    # check preparedMime/postedMime and preparedSize/postedSize
    ibecho "posting video"
-   bapBsky_postVideo $bap_postedBlob $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt" || { iberr "fatal: video posting failed!"; return 1; }
+   bapBsky_cyorInit
+   bapBsky_cyorAddVideo $bap_postedBlob $bap_postedSize $bap_imageWidth $bap_imageHeight "$alt" || { iberr "fatal: video embed error!"; return 1; }
+   if [ -n "$text" ]; then bapCYOR_str text "$text"; fi
+   if [ -n "$selflabel" ]; then bapBsky_cyorAddSelfLabels $(echo $selflabel | tr ',' ' '); fi
+   if [ "$dryrun" != "0" ]; then ibecho "dry-run post JSON: $bap_cyorRecord"; return 0; fi
+   bapBsky_submitPost || { iberr "fatal: video posting failed!"; return 1; }
    ibecho "video upload SUCCESS (may take time to process)"
    return 0
 }
 
 function eventHandler () {
-   case "$(date +%m%d)" in
-
-      "0109" | "0401")
-      event=fools
-      ;;
-
-      "1031")
-      event=halloween
-      ;;
-
-      "1224" | "1225" )
-      event=christmas
-      ;;
-
-      *)
-      event=regular
-      ;;
-   esac
+   local iter
+   if [[ -f data/events.txt ]]; then while IFS= read -r line; do
+      if [[ $line = \#* ]] || [ -z "$line" ]; then continue; fi
+      iter=2
+      while :
+      do
+         if [ -z "$(echo $line | cut -d ',' -f $iter)" ]; then break; fi
+         if [ "$(date +%m%d)" = "$(echo $line | cut -d ',' -f $iter)" ]; then event="$(echo $line | cut -d ',' -f 1)"; break 2; fi
+         ((iter++))
+      done
+   done < "data/events.txt"
+   fi
    if [ "$(TZ=Asia/Tokyo date +%m%d)" = "$birthday" ]; then event=birthday; fi
-   if ! [ -f data/$idol/images/$event.txt ]; then event=regular; fi
+   if  [ "$randomEventChance" != "0" ] && [ $(($RANDOM % $randomEventChance)) = "0" ]; then event=$randomEventName; fi
+   if [ -z "$event" ] || ! [ -f data/$idol/images/$event.txt ]; then event=regular; fi
 }
 
 function checkImage () {
@@ -323,11 +331,13 @@ function loadImage () {
 }
 
 function postTimer () {
-   # if not next post time, return and do nothing
-   if [ "$nextPostTime" -gt "$(date +%s)" ]; then return 0; fi
+   if [ -z "$svcInterval" ]; then iberr "error: timer not available; svcInterval not set"; return 1; fi
+   # if not next post time or postinterval negative, return and do nothing
+   if [ "$nextPostTime" -gt "$(date +%s)" ] || [ "$postInterval" -lt "0" ]; then return 0; fi
    postingLogic || return $?
-   updateIdolTxt nextPostTime $(($(date +%s) + (($postInterval * $svcInterval) - $(date +%s) % ($postInterval * $svcInterval))))
-   return 0;
+   if [ "$(date +%s)" = "$birthday" ]; then updateIdolTxt nextPostTime $(($(date +%s) + (($bdayInterval * $svcInterval) - $(date +%s) % ($bdayInterval * $svcInterval)))); else
+   updateIdolTxt nextPostTime $(($(date +%s) + (($postInterval * $svcInterval) - $(date +%s) % ($postInterval * $svcInterval)))); fi
+   return 0
 }
 
 function postingLogic () {

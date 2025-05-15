@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 echo 'iM@S Image Bot'
 echo 'Powered by bash-atproto'
+export svcInterval=900 # fire every 15 minutes
 
 function installService () {
    if ! [[ -d /run/systemd/system ]]; then echo "No systemd detected. Please manage the service manually with your init system."; exit 1; fi
@@ -35,13 +36,12 @@ function postAll () {
    wait
 }
 
-if [ "$1" = "--install" ]; then installService; fi
-if [ "$1" = "--uninstall" ]; then installService un; fi
-
-if [ "$1" = "init-secrets" ]; then loginAll; fi
-if [ "$1" = "--post-now" ]; then postAll; exit 0; fi
-
-svcInterval=900 # fire every 15 minutes
+case "$1" in
+    "--install") installService;;
+    "--uninstall") installService un;;
+    "init-secrets") loginAll;;
+    "--post-now") postAll; exit 0;;
+esac
 
 function napTime () {
    sleeptime=$(($1 - $(date +%s) % $1))

@@ -56,7 +56,7 @@ The image itself. \<imgtype\> is just the file extension. It must match the one 
 
 ## info.txt
 
-This file is inside of every image entry, and contains important metadata, namely the imgtype, alt text, post text, self-labels and any other idols that are in the image. All but imgtype may be omitted, but I recommend you just leave them blank. Multiple idols may be specified in otheridols by separating them with commas without spaces.
+This file is inside of every image entry, and contains important metadata, namely the imgtype, alt text, post text, self-labels and any other idols that are in the image. All but imgtype may be omitted, but I recommend you just leave them blank. Multiple idols and self-labels may be specified in otheridols and selflabel respectively by separating them with commas without spaces.
 
 ### example
 
