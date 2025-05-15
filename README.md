@@ -26,7 +26,7 @@ To uninstall the bot, stop the bot with `systemctl stop imasimgbot` then run the
 
 ## Update
 
-After running the usual `git pull`, you should run `git submodule update` to update bash-atproto. imasimgbot will throw errors if it needs a newer bash-atproto.
+Run `git pull --recurse-submodules` to update bash-atproto along with imasimgbot. If `imasimgbot.sh` was updated, you'll need to restart the bot's service if it was running. imasimgbot will throw errors if it needs a newer bash-atproto.
 
 ## License
 
