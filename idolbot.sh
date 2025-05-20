@@ -191,6 +191,17 @@ function idolReposting () {
    return 0
 }
 
+function addPostTags () {
+   if [ -n "$text" ]; then bapCYOR_str text "$text" || return $?; fi
+   # shellcheck disable=SC2046
+   if [ -n "$selflabel" ]; then bapBsky_cyorAddSelfLabels $(echo "$selflabel" | tr ',' ' ') || return $?; fi
+   # shellcheck disable=SC2046
+   if [ -n "$tags" ]; then bapBsky_cyorAddTags $(echo "$tags" | tr ',' ' ') || return $?; fi
+   # shellcheck disable=SC2046
+   if [ -n "$langs" ]; then bapBsky_cyorAddLangs $(echo "$langs" | tr ',' ' ') || return $?; fi
+   return 0
+}
+
 function postIdolPic () {
    imageCaching=0
    if [ "$imageCacheStrategy" -ge "1" ]; then
@@ -227,9 +238,7 @@ function postIdolPic () {
    bapBsky_cyorInit
    # this shouldn't fail but exit if it does
    bapBsky_cyorAddImage 0 "$bap_postedBlob" "$bap_postedMime" "$bap_postedSize" "$bap_imageWidth" "$bap_imageHeight" "$alt" || { iberr "fatal: image embed error!"; return 1; }
-   if [ -n "$text" ]; then bapCYOR_str text "$text"; fi
-   # shellcheck disable=SC2046
-   if [ -n "$selflabel" ]; then bapBsky_cyorAddSelfLabels $(echo "$selflabel" | tr ',' ' '); fi
+   addPostTags || { iberr "fatal: problem occurred adding tags!"; return 1; }
    if [ "$dryrun" != "0" ]; then ibecho "dry-run post JSON: $bap_cyorRecord"; return 0; fi
    bapBsky_submitPost || { iberr "fatal: image posting failed!"; return 1; }
    ibecho "image upload SUCCESS"
@@ -251,9 +260,7 @@ function postIdolVideo () {
    ibecho "posting video"
    bapBsky_cyorInit
    bapBsky_cyorAddVideo "$bap_postedBlob" "$bap_postedSize" "$bap_imageWidth" "$bap_imageHeight" "$alt" || { iberr "fatal: video embed error!"; return 1; }
-   if [ -n "$text" ]; then bapCYOR_str text "$text"; fi
-   # shellcheck disable=SC2046
-   if [ -n "$selflabel" ]; then bapBsky_cyorAddSelfLabels $(echo "$selflabel" | tr ',' ' '); fi
+   addPostTags || { iberr "fatal: problem occurred adding tags!"; return 1; }
    if [ "$dryrun" != "0" ]; then ibecho "dry-run post JSON: $bap_cyorRecord"; return 0; fi
    bapBsky_submitPost || { iberr "fatal: video posting failed!"; return 1; }
    ibecho "video upload SUCCESS (may take time to process)"
@@ -307,6 +314,7 @@ function iterateSubentries () {
    images=$(grep -xvf "$imagedir/subentry-recents.txt" "$imagedir/subentries.txt")
    if [ -z "$images" ]; then
       ibecho "resetting subentry recents queue for $image"
+      if ! [ -s "$imagedir/subentry-recents.txt" ]; then echo > "$imagedir/subentry-recents.txt"; fi
       truText 2 "$imagedir/subentry-recents.txt"
       images=$(grep -xvf "$imagedir/subentry-recents.txt" "$imagedir/subentries.txt")
    fi
@@ -334,9 +342,15 @@ function loadImage () {
    ibecho "location: $imagepath"
    ibecho "alt text: $alt"
    if [ -n "$text" ]; then ibecho "entry has post text: $text"; fi
-   if [ -n "$selflabel" ]; then ibecho "entry has a self-label: $selflabel"; fi
+   if [ -n "$selflabel" ]; then ibecho "entry has self-labels: $selflabel"; fi
+   if [ -n "$tags" ]; then ibecho "entry has tags: $tags"; fi
+   if [ -n "$langs" ]; then ibecho "entry has post languages: $langs"; fi
    if [ -n "$otheridols" ]; then ibecho "entry has other idols: $otheridols"; fi
    return 0
+}
+
+function getPostTime () {
+   echo $(($(date +%s) + (($1 * $2) - $(date +%s) % ($1 * $2))))
 }
 
 function postTimer () {
@@ -344,8 +358,8 @@ function postTimer () {
    # if not next post time or postinterval negative, return and do nothing
    if [ "$nextPostTime" -gt "$(date +%s)" ] || [ "$postInterval" -lt "0" ]; then return 0; fi
    postingLogic || return $?
-   if [ "$(TZ=Asia/Tokyo date +%m%d)" = "$birthday" ]; then updateIdolTxt nextPostTime $(($(date +%s) + ((bdayInterval * svcInterval) - $(date +%s) % (bdayInterval * svcInterval)))); else
-   updateIdolTxt nextPostTime $(($(date +%s) + ((postInterval * svcInterval) - $(date +%s) % (postInterval * svcInterval)))); fi
+   if [ "$(TZ=Asia/Tokyo date +%m%d)" = "$birthday" ]; then updateIdolTxt nextPostTime "$(getPostTime "$bdayInterval" "$svcInterval")"; else
+   updateIdolTxt nextPostTime  "$(getPostTime "$postInterval" "$svcInterval")"; fi
    return 0
 }
 
