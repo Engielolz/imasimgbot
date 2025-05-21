@@ -1,14 +1,20 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
 
+function printcacheerr () {
+   >&2 echo "cache error $cachePath: $1"
+   cacheerrordata+="$idol/$event $cachePath: $1
+"
+}
+
 function fetchImageCache () {
    cachePath= #imgverify
    if [ "$subentries" = "1" ]; then cachePath=$imageCacheLocation/$image-$subimage; else cachePath=$imageCacheLocation/$image; fi
    if [ ! -f "$cachePath/cache.txt" ]; then return 1; fi
    loadConfig "$cachePath/cache.txt"
-   if [ ! -f "$cachePath/cache.$cacheimgtype" ]; then >&2 echo "imgcache: cached image not found"; return 2; fi
-   if [ "$cachehash" != "$(sha256sum "$cachePath/cache.$cacheimgtype" | awk '{print $1}')" ]; then  >&2 echo "imgcache: hash does not match cached image"; return 2; fi
-   if [ "$orighash" != "$(sha256sum "$imagepath" | awk '{print $1}')" ]; then >&2 echo "imgcache: hash does not match the image originally cached"; return 2; fi
+   if [ ! -f "$cachePath/cache.$cacheimgtype" ]; then printcacheerr "cached image not found"; return 2; fi
+   if [ "$cachehash" != "$(sha256sum "$cachePath/cache.$cacheimgtype" | awk '{print $1}')" ]; then printcacheerr "hash does not match cached image"; return 2; fi
+   if [ "$orighash" != "$(sha256sum "$imagepath" | awk '{print $1}')" ]; then printcacheerr "hash does not match the image originally cached"; return 2; fi
    imagepath=$cachePath/cache.$cacheimgtype
    return 0
 }
@@ -33,7 +39,7 @@ function saveToImageCache () {
    if [ -f "$cachePath/cache.txt" ]; then return 0; fi # already cached
    mkdir -p "$cachePath"
    {
-   echo "orighash=$(sha256sum "$imagepath" | awk '{print $1}')" > "$cachePath/cache.txt"
+   echo "orighash=$(sha256sum "$imagepath" | awk '{print $1}')"
    echo "cachehash=$(sha256sum "$bap_preparedImage" | awk '{print $1}')"
    echo "cacheimgtype=${bap_preparedImage##*.}"
    echo "cachemime=$bap_preparedMime"
