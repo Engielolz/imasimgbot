@@ -34,7 +34,11 @@ function loadConfig () {
 }
 
 function prepImage () {
-   bapBsky_prepareImage "$imagepath" >/dev/null || { $printerrcmd "failed to prep image"; if [ -f "$bap_preparedImage" ]; then rm -f "$bap_preparedImage"; fi; return 1; }
+   if [ "$imgtype" = "gif" ] && [ "$(isAniGIF "$imagepath")" -ge "2" ] || [ "$imgtype" = "mp4" ]; then
+      prepareVideo "$imagepath" >/dev/null || { $printerrcmd "failed to prep video"; return 1; }
+   else
+      bapBsky_prepareImage "$imagepath" >/dev/null || { $printerrcmd "failed to prep image"; if [ -f "$bap_preparedImage" ]; then rm -f "$bap_preparedImage"; fi; return 1; }
+   fi
    if [ "$1" = "clear" ]; then rm -f "$bap_preparedImage"; fi
 }
 
@@ -42,7 +46,7 @@ function checkImage () {
    if [ "$1" = "sub" ]; then printerrcmd=printsuberr; else printerrcmd=printerr; fi
    if [ -z "$imgtype" ]; then $printerrcmd "no imgtype"; return 1; fi
    if ! [ -f "$imagepath" ]; then $printerrcmd "no image"; return 1; fi
-   if [ "$2" = "--scan" ] && ! [ "$imgtype" = "mp4" ]; then prepImage clear || return 1; fi
+   if [ "$2" = "--scan" ]; then prepImage clear || return 1; fi
    return 0
 }
 
@@ -58,9 +62,8 @@ function scanSubentries () {
       if [ "$subentries" = "1" ]; then printsuberr "nested subentry not supported"; fi
       imagepath=data/$idol/images/$image/$subimage/image.$imgtype
       checkImage sub "$(if [ "$scan" = "1" ]; then echo "--scan"; fi)" || continue
-      if [ "$cacheverify" = "1" ] && ! [ "$imgtype" = "mp4" ]; then subentries=1 fetchImageCache; if [ "$?" = "2" ]; then rm -r "$cachePath"; fi; fi
+      if [ "$cacheverify" = "1" ]; then subentries=1 fetchImageCache; if [ "$?" = "2" ]; then rm -r "$cachePath"; fi; fi
       if [ "$scan" = "2" ]; then
-         if [ "$imgtype" = "mp4" ]; then continue; fi
          prepImage || continue
          subentries=1 saveToImageCache
          rm -f "$bap_preparedImage" 2> /dev/null
@@ -108,9 +111,8 @@ for i in $(seq 1 "$(wc -l <data/idols.txt)"); do
       if [ -f "data/$idol/images/$image/subentries.txt" ]; then printerr "subentries detected but not enabled (overwrite info.txt with subentries=1)"; fi
       imagepath="data/$idol/images/$image/image.$imgtype"
       checkImage main "$(if [ "$scan" = "1" ]; then echo "--scan"; fi)" || continue
-      if [ "$cacheverify" = "1" ] && ! [ "$imgtype" = "mp4" ]; then fetchImageCache; if [ "$?" = "2" ]; then rm -r "$cachePath"; fi; fi
+      if [ "$cacheverify" = "1" ]; then fetchImageCache; if [ "$?" = "2" ]; then rm -r "$cachePath"; fi; fi
       if [ "$scan" = "2" ]; then
-         if [ "$imgtype" = "mp4" ]; then continue; fi
          prepImage || continue
          saveToImageCache
          rm -f "$bap_preparedImage" 2> /dev/null

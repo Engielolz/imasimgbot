@@ -47,6 +47,7 @@ source ./bash-atproto/bash-atproto.sh && source ./bash-atproto/bap-bsky.sh && so
 if [ "$bap_internalVersion" != "3" ] || ! [ "$bap_internalMinorVer" -ge "3" ]; then >&2 echo "Incorrect bash-atproto version"; exit 1; fi
 if [ "$bapBsky_internalVersion" != "1" ] || ! [ "$bapBsky_internalMinorVer" -ge "2" ]; then >&2 echo "Incorrect bap-bsky version"; exit 1; fi
 bap_curlUserAgent="$bap_curlUserAgent imasimgbot/1.$internalIdolVer-$(git -c safe.directory="$(pwd)" describe --always --dirty) (+https://github.com/Engielolz/imasimgbot)"
+bapBsky_allowLegacyPre2=0
 
 # Check params
 if [ -z "$1" ] || [ "$1" = "--help" ]; then showHelp; exit 1; fi
@@ -247,25 +248,51 @@ function postIdolPic () {
 }
 
 function postIdolVideo () {
-   checkRefresh || return $?
-   if [ "$directVideoPosting" = "1" ]; then videoUploadCMD=bapBsky_prepareVideo; else
-      bapBsky_checkVideo "$imagepath" || return $?
-      videoUploadCMD=bap_postBlobToPDS
-      bap_imageWidth=$(exiftool -ImageWidth -s3 "$imagepath") || { iberr "fatal: exiftool failed!"; return 1; }
-      bap_imageHeight=$(exiftool -ImageHeight -s3 "$imagepath") || { iberr "fatal: exiftool failed!"; return 1; }
+   imageCaching=0
+   if [ "$imageCacheStrategy" -ge "1" ]; then
+      fetchImageCache
+      case $? in
+         0)
+         imageCaching=1
+         loadCachedImage
+         ibecho "using cached video";;
+         2)
+         iberr "cached video data invalid, purging"
+         rm -r "$cachePath";;
+      esac
    fi
-   ibecho "uploading video"
-   $videoUploadCMD "$imagepath" "video/mp4" || { iberr "fatal: video upload failed!"; return 1; }
+   if [ "$imageCaching" = "0" ]; then
+      ibecho "preparing video"
+      prepareVideo "$imagepath" || { iberr "fatal: video prep failed"; if [ -f "$bap_preparedImage" ]; then rm -f "$bap_preparedImage"; fi; return 1; }
+   fi
+   if ! [ "$dryrun" = "0" ]; then rm "$bap_preparedImage"; fi
+   if [ "$dryrun" = "0" ]; then
+      checkRefresh || { rm -f "$bap_preparedImage"; return 1; }
+      if [ "$imageCaching" = "0" ] || [ "$imageCacheStrategy" != "2" ] || [ -z "$bloblink" ]; then
+         ibecho "uploading video to pds"
+         if [ "$directVideoPosting" = "1" ]; then videoUploadCMD=bapBsky_prepareVideo; else videoUploadCMD=bapBsky_prepareVideoIndirect; fi
+         $videoUploadCMD "$bap_preparedImage" "video/mp4" || { iberr "fatal: video upload failed!"; rm "$bap_preparedImage"; return 1; }
+         # shellcheck disable=SC2119
+         if [ "$imageCacheStrategy" != "0" ]; then saveToImageCache; fi
+         rm "$bap_preparedImage"
+      else ibecho "reusing cached blob id"
+      fi
+   fi
    # check preparedMime/postedMime and preparedSize/postedSize
+   if [ "$dryrun" != "0" ] && [ -z "$bap_postedBlob" ]; then bap_postedBlob=dry-run bap_postedMime=$bap_preparedMime bap_postedSize=$bap_preparedSize; fi
    ibecho "posting video"
    bapBsky_cyorInit
+   # this shouldn't fail but exit if it does
    bapBsky_cyorAddVideo "$bap_postedBlob" "$bap_postedSize" "$bap_imageWidth" "$bap_imageHeight" "$alt" || { iberr "fatal: video embed error!"; return 1; }
    addPostTags || { iberr "fatal: problem occurred adding tags!"; return 1; }
    if [ "$dryrun" != "0" ]; then ibecho "dry-run post JSON: $bap_cyorRecord"; return 0; fi
    bapBsky_submitPost || { iberr "fatal: video posting failed!"; return 1; }
    ibecho "video upload SUCCESS (may take time to process)"
+   if [ "$imageCacheStrategy" != "0" ] && [ -z "$bloblink" ]; then repText "s/bloblink=/bloblink=$bap_postedBlob/g" "$cachePath/cache.txt"; fi
    return 0
 }
+
+
 
 function eventHandler () {
    local iter
@@ -389,14 +416,10 @@ function postingLogic () {
          iberr "warning: trying another image ($imageRetries/10)..."
       done
    fi
-   if ! [ "$imgtype" = "mp4" ]; then
-      postIdolPic || { iberr "fatal: failed to post image!"; return 1; }
+   if [ "$imgtype" = "gif" ] && [ "$(isAniGIF "$imagepath")" -ge "2" ] || [ "$imgtype" = "mp4" ]; then
+      postIdolVideo || { iberr "fatal: failed to post video!"; return 1; }
    else
-      if [ "$dryrun" = "0" ]; then
-         postIdolVideo || { iberr "fatal: failed to post video!"; return 1; }
-      else
-         ibecho "skipping post because --dry-run or --no-post specified"
-      fi
+      postIdolPic || { iberr "fatal: failed to post image!"; return 1; }
    fi
    if ! [ "$dryrun" = "2" ]; then
       ibecho "adding image to recents"
